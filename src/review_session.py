@@ -53,6 +53,8 @@ def run_review_session(config, logger=None):
             if type_name is None:
                 print("  Type creation cancelled. File remains in review.")
                 continue
+            if logger:
+                logger.log_new_type(type_name, config.type_definitions["types"][type_name])
 
         # File it using the selected/created type
         generated_name = generate_name(
@@ -72,7 +74,7 @@ def run_review_session(config, logger=None):
         if logger:
             logger.log_manual_file(
                 file_path, type_name, result['destination'],
-                new_type=False
+                new_type=(action == "new")
             )
 
     # Final summary
