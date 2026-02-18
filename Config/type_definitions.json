@@ -93,8 +93,8 @@
         },
         "address": {
           "patterns": [
-            "\\d+\\s+[A-Za-z].+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place)\\.?[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?",
-            "(?:P\\.?\\s*O\\.?\\s*Box\\s+\\d+)[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?"
+            "(\\d+\\s+[A-Za-z].+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place)\\.?[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?)",
+            "((?:P\\.?\\s*O\\.?\\s*Box\\s+\\d+)[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?)"
           ],
           "required": false
         },

@@ -55,7 +55,7 @@ def extract_fields(text: str, type_name: str, type_definitions: dict) -> tuple[d
                 if match:
                     value = match.group(1).strip()
                     break
-            except re.error:
+            except (re.error, IndexError):
                 continue
 
         if value:
