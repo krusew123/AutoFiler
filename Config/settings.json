@@ -10,5 +10,6 @@
   "poppler_path": "C:\\poppler\\poppler-25.12.0\\Library\\bin",
   "duplicate_handling": "timestamp_suffix",
   "unrecognized_handling": "route_to_review",
-  "fuzzy_match_threshold": 0.80
+  "fuzzy_match_threshold": 0.80,
+  "sidecar_path": "E:\\AutoFiler\\Sidecars"
 }

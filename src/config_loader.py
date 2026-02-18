@@ -31,9 +31,13 @@ class ConfigLoader:
         )
         self._cache[relative_path] = data
 
-    def save_vendor_reference(self, data: dict):
-        """Persist updated vendor reference data to disk."""
-        self._save("References/vendor_reference.json", data)
+    def load_reference(self, relative_path: str) -> dict:
+        """Load a reference JSON file relative to the config root."""
+        return self._load(relative_path)
+
+    def save_reference(self, relative_path: str, data: dict):
+        """Persist updated reference data to disk."""
+        self._save(relative_path, data)
 
     def reload(self, relative_path: str | None = None):
         """Clear cache for one file or all files, forcing a fresh read."""

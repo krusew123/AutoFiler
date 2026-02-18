@@ -8,7 +8,8 @@ from src.name_generator import generate_name
 from src.filer import file_to_destination
 from src.content_matcher import extract_fields
 from src.guards import check_file
-from src.reference_resolver import resolve_invoice_fields
+from src.cross_referencer import cross_reference_fields
+from src.sidecar import generate_sidecar, hash_file
 
 
 def process_file(file_path: str, config, logger=None) -> dict:
@@ -55,7 +56,7 @@ def process_file(file_path: str, config, logger=None) -> dict:
             review_path=settings["review_path"],
         )
 
-        # 4. Extract fields & Name & File (only if auto-filed)
+        # 4. Extract fields & cross-reference & Name & File (only if auto-filed)
         filing = None
         extracted_fields = None
         if routing["decision"] == "auto_file":
@@ -74,23 +75,25 @@ def process_file(file_path: str, config, logger=None) -> dict:
                     "score": best_score,
                 }
             else:
-                # Resolve vendor/company references for invoices
-                if best_type == "invoice":
-                    resolved, company_matched = resolve_invoice_fields(
-                        extracted_fields, extracted_text, config, logger
-                    )
-                    if not company_matched:
-                        move_to_review(file_path, settings["review_path"])
-                        routing = {
-                            "decision": "review",
-                            "reason": f"unmatched_company:{extracted_fields.get('customer_name', '')}",
-                            "type_name": best_type,
-                            "score": best_score,
-                        }
-                    else:
-                        extracted_fields = resolved
+                # Cross-reference any fields that have reference config
+                resolved, unresolved = cross_reference_fields(
+                    extracted_fields, extracted_text, best_type, config, logger
+                )
+                if unresolved:
+                    move_to_review(file_path, settings["review_path"])
+                    routing = {
+                        "decision": "review",
+                        "reason": f"unresolved_fields:{','.join(unresolved)}",
+                        "type_name": best_type,
+                        "score": best_score,
+                    }
+                else:
+                    extracted_fields = resolved
 
                 if routing["decision"] == "auto_file":
+                    # Hash before moving
+                    file_hash = hash_file(file_path)
+
                     generated_name = generate_name(
                         file_path, best_type, config.naming_conventions,
                         extracted_fields=extracted_fields,
@@ -103,6 +106,20 @@ def process_file(file_path: str, config, logger=None) -> dict:
                         folder_mappings=config.folder_mappings,
                         extracted_fields=extracted_fields,
                     )
+
+                    # Generate sidecar
+                    sidecar_path = settings.get("sidecar_path")
+                    if sidecar_path:
+                        generate_sidecar(
+                            source_file_path=file_path,
+                            filing_result=filing,
+                            doc_type=best_type,
+                            confidence_score=best_score,
+                            extracted_fields=extracted_fields,
+                            extracted_text=extracted_text,
+                            sidecar_path=sidecar_path,
+                            file_hash=file_hash,
+                        )
 
         result = {
             "classification": classification,

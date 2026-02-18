@@ -8,7 +8,8 @@ from src.scorer import score_candidates
 from src.content_matcher import extract_fields
 from src.name_generator import generate_name
 from src.filer import file_to_destination
-from src.reference_resolver import resolve_invoice_fields
+from src.cross_referencer import cross_reference_fields
+from src.sidecar import generate_sidecar, hash_file
 
 
 def run_review_session(config, logger=None):
@@ -63,12 +64,15 @@ def run_review_session(config, logger=None):
             extracted_text, type_name, config.type_definitions
         )
 
-        # Resolve vendor/company references for invoices
-        if type_name == "invoice" and extracted_fields:
-            resolved, _ = resolve_invoice_fields(
-                extracted_fields, extracted_text, config, logger
+        # Cross-reference fields (ignore unresolved — user is deciding)
+        if extracted_fields:
+            resolved, _ = cross_reference_fields(
+                extracted_fields, extracted_text, type_name, config, logger
             )
             extracted_fields = resolved
+
+        # Hash before moving
+        file_hash = hash_file(file_path)
 
         # File it using the selected/created type
         generated_name = generate_name(
@@ -83,6 +87,20 @@ def run_review_session(config, logger=None):
             folder_mappings=config.folder_mappings,
             extracted_fields=extracted_fields,
         )
+
+        # Generate sidecar
+        sidecar_path = settings.get("sidecar_path")
+        if sidecar_path:
+            generate_sidecar(
+                source_file_path=file_path,
+                filing_result=result,
+                doc_type=type_name,
+                confidence_score=None,
+                extracted_fields=extracted_fields,
+                extracted_text=extracted_text,
+                sidecar_path=sidecar_path,
+                file_hash=file_hash,
+            )
 
         queue.mark_resolved(file_path, type_name)
         print(f"  Filed as '{type_name}' -> {result['destination']}")

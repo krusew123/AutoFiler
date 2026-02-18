@@ -103,27 +103,33 @@ class AutoFilerLogger:
         self._write(entry)
         self._py_logger.error(f"Error: {file_path} -- {error}")
 
-    def log_new_vendor(self, vendor_name: str, vendor_entry: dict):
-        """Log automatic creation of a new vendor reference entry."""
-        entry = {
-            "action": "vendor_created",
-            "vendor_name": vendor_name,
-            "date_added": vendor_entry.get("date_added"),
-            "added_from_invoice": vendor_entry.get("added_from_invoice"),
+    def log_reference_entry(self, field_name: str, raw_value: str, entry: dict):
+        """Log automatic creation of a new reference entry."""
+        log_entry = {
+            "action": "reference_entry_created",
+            "field": field_name,
+            "raw_value": raw_value,
+            "entry": entry,
         }
-        self._write(entry)
-        self._py_logger.info(f"New vendor created: {vendor_name}")
+        self._write(log_entry)
+        self._py_logger.info(
+            f"New reference entry created for {field_name}: {raw_value}"
+        )
 
-    def log_company_suggestion(self, unmatched_name: str):
-        """Log an unmatched company name as a suggestion for the reference."""
+    def log_cross_reference_failure(
+        self, field_name: str, raw_value: str, reference_file: str
+    ):
+        """Log an unmatched cross-reference value."""
         entry = {
-            "action": "company_suggestion",
-            "unmatched_name": unmatched_name,
+            "action": "cross_reference_failure",
+            "field": field_name,
+            "raw_value": raw_value,
+            "reference_file": reference_file,
         }
         self._write(entry)
         self._py_logger.warning(
-            f"Unmatched company name: '{unmatched_name}' — "
-            "consider adding to company_reference.json"
+            f"Cross-reference failure for {field_name}: '{raw_value}' "
+            f"not found in {reference_file}"
         )
 
     def log_new_type(self, type_name: str, definition: dict):

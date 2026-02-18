@@ -56,7 +56,11 @@
             "^(?:From|Sender|Vendor|Sold\\s*By)\\s*:\\s*(.+?)$",
             "^(.+?,\\s*(?:Inc|LLC|Corp|Ltd|Company|LP|LLP)\\.?)\\s*$"
           ],
-          "required": true
+          "required": true,
+          "cross_reference": "References/vendor_reference.json",
+          "reference_key": "vendors",
+          "supporting_fields": ["address", "phone", "tax_id"],
+          "create_if_missing": true
         },
         "customer_name": {
           "patterns": [
@@ -65,7 +69,11 @@
             "Prepared\\s+For\\b.*\\n\\s*(.+?)(?:\\s+\\d|\\n)",
             "(?:Sold\\s*To|Ship\\s*To)[:\\s]*\\n?\\s*(.+?)\\n"
           ],
-          "required": true
+          "required": true,
+          "cross_reference": "References/company_reference.json",
+          "reference_key": "companies",
+          "supporting_fields": [],
+          "create_if_missing": false
         },
         "invoice_number": {
           "patterns": [
@@ -82,9 +90,7 @@
             "Date[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})"
           ],
           "required": true
-        }
-      },
-      "vendor_extraction_fields": {
+        },
         "address": {
           "patterns": [
             "\\d+\\s+[A-Za-z].+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place)\\.?[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?",
