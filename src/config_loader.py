@@ -21,6 +21,20 @@ class ConfigLoader:
             )
         return self._cache[relative_path]
 
+    def _save(self, relative_path: str, data: dict):
+        """Write JSON data to a config file and update the cache."""
+        full = self._root / relative_path
+        full.parent.mkdir(parents=True, exist_ok=True)
+        full.write_text(
+            json.dumps(data, indent=2, ensure_ascii=False) + "\n",
+            encoding="utf-8",
+        )
+        self._cache[relative_path] = data
+
+    def save_vendor_reference(self, data: dict):
+        """Persist updated vendor reference data to disk."""
+        self._save("References/vendor_reference.json", data)
+
     def reload(self, relative_path: str | None = None):
         """Clear cache for one file or all files, forcing a fresh read."""
         if relative_path:
@@ -47,3 +61,11 @@ class ConfigLoader:
     @property
     def naming_conventions(self) -> dict:
         return self._load("References/naming_conventions.json")
+
+    @property
+    def company_reference(self) -> dict:
+        return self._load("References/company_reference.json")
+
+    @property
+    def vendor_reference(self) -> dict:
+        return self._load("References/vendor_reference.json")

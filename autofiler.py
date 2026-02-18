@@ -22,6 +22,7 @@ class IntakeHandler(FileSystemEventHandler):
         # Small delay to let file writes finish
         time.sleep(1)
         try:
+            self.config.reload()
             process_file(event.src_path, self.config, self.logger)
         except Exception as e:
             self.logger.log_error(event.src_path, str(e))

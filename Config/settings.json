@@ -9,5 +9,6 @@
   "tesseract_path": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
   "poppler_path": "C:\\poppler\\poppler-25.12.0\\Library\\bin",
   "duplicate_handling": "timestamp_suffix",
-  "unrecognized_handling": "route_to_review"
+  "unrecognized_handling": "route_to_review",
+  "fuzzy_match_threshold": 0.80
 }

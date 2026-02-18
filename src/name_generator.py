@@ -10,6 +10,7 @@ def generate_name(
     type_name: str,
     naming_conventions: dict,
     counter: int = 0,
+    extracted_fields: dict | None = None,
 ) -> str:
     """
     Resolve the naming pattern for a given type into a concrete filename.
@@ -38,6 +39,11 @@ def generate_name(
     name = name.replace("{type}", type_name)
     name = name.replace("{counter}", str(counter))
     name = name.replace("{separator}", separator)
+
+    # Replace extracted field placeholders (e.g. {vendor_name}, {invoice_number})
+    if extracted_fields:
+        for field_name, field_value in extracted_fields.items():
+            name = name.replace(f"{{{field_name}}}", field_value)
 
     if lowercase:
         name = name.lower()

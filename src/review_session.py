@@ -5,8 +5,10 @@ from src.review_queue import ReviewQueue
 from src.review_prompt import display_file_info, prompt_type_selection
 from src.classifier import classify_file
 from src.scorer import score_candidates
+from src.content_matcher import extract_fields
 from src.name_generator import generate_name
 from src.filer import file_to_destination
+from src.reference_resolver import resolve_invoice_fields
 
 
 def run_review_session(config, logger=None):
@@ -56,9 +58,22 @@ def run_review_session(config, logger=None):
             if logger:
                 logger.log_new_type(type_name, config.type_definitions["types"][type_name])
 
+        # Extract fields (ignore missing — user is deciding during review)
+        extracted_fields, _ = extract_fields(
+            extracted_text, type_name, config.type_definitions
+        )
+
+        # Resolve vendor/company references for invoices
+        if type_name == "invoice" and extracted_fields:
+            resolved, _ = resolve_invoice_fields(
+                extracted_fields, extracted_text, config, logger
+            )
+            extracted_fields = resolved
+
         # File it using the selected/created type
         generated_name = generate_name(
-            file_path, type_name, config.naming_conventions
+            file_path, type_name, config.naming_conventions,
+            extracted_fields=extracted_fields,
         )
         result = file_to_destination(
             file_path=file_path,
@@ -66,6 +81,7 @@ def run_review_session(config, logger=None):
             type_name=type_name,
             destination_root=settings["destination_root"],
             folder_mappings=config.folder_mappings,
+            extracted_fields=extracted_fields,
         )
 
         queue.mark_resolved(file_path, type_name)

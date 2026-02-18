@@ -103,6 +103,29 @@ class AutoFilerLogger:
         self._write(entry)
         self._py_logger.error(f"Error: {file_path} -- {error}")
 
+    def log_new_vendor(self, vendor_name: str, vendor_entry: dict):
+        """Log automatic creation of a new vendor reference entry."""
+        entry = {
+            "action": "vendor_created",
+            "vendor_name": vendor_name,
+            "date_added": vendor_entry.get("date_added"),
+            "added_from_invoice": vendor_entry.get("added_from_invoice"),
+        }
+        self._write(entry)
+        self._py_logger.info(f"New vendor created: {vendor_name}")
+
+    def log_company_suggestion(self, unmatched_name: str):
+        """Log an unmatched company name as a suggestion for the reference."""
+        entry = {
+            "action": "company_suggestion",
+            "unmatched_name": unmatched_name,
+        }
+        self._write(entry)
+        self._py_logger.warning(
+            f"Unmatched company name: '{unmatched_name}' — "
+            "consider adding to company_reference.json"
+        )
+
     def log_new_type(self, type_name: str, definition: dict):
         """Log a new file type being created."""
         entry = {

@@ -25,7 +25,7 @@ def route_file(
     """
     # No candidate found at all
     if best_type is None or score is None:
-        _move_to_review(file_path, review_path)
+        move_to_review(file_path, review_path)
         return {
             "decision": "review",
             "reason": "no_candidate",
@@ -35,7 +35,7 @@ def route_file(
 
     # Score below threshold
     if score < threshold:
-        _move_to_review(file_path, review_path)
+        move_to_review(file_path, review_path)
         return {
             "decision": "review",
             "reason": f"score_{score}_below_threshold_{threshold}",
@@ -52,7 +52,7 @@ def route_file(
     }
 
 
-def _move_to_review(file_path: str, review_path: str):
+def move_to_review(file_path: str, review_path: str):
     """Move a file to the review folder, preserving its original name."""
     dest = pathlib.Path(review_path)
     dest.mkdir(parents=True, exist_ok=True)

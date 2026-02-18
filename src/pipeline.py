@@ -3,10 +3,12 @@
 
 from src.classifier import classify_file
 from src.scorer import score_candidates, select_best_candidate
-from src.router import route_file
+from src.router import route_file, move_to_review
 from src.name_generator import generate_name
 from src.filer import file_to_destination
+from src.content_matcher import extract_fields
 from src.guards import check_file
+from src.reference_resolver import resolve_invoice_fields
 
 
 def process_file(file_path: str, config, logger=None) -> dict:
@@ -53,19 +55,54 @@ def process_file(file_path: str, config, logger=None) -> dict:
             review_path=settings["review_path"],
         )
 
-        # 4. Name & File (only if auto-filed)
+        # 4. Extract fields & Name & File (only if auto-filed)
         filing = None
+        extracted_fields = None
         if routing["decision"] == "auto_file":
-            generated_name = generate_name(
-                file_path, best_type, config.naming_conventions
+            extracted_text = classification.get("extracted_text", "")
+            extracted_fields, missing = extract_fields(
+                extracted_text, best_type, config.type_definitions
             )
-            filing = file_to_destination(
-                file_path=file_path,
-                generated_name=generated_name,
-                type_name=best_type,
-                destination_root=settings["destination_root"],
-                folder_mappings=config.folder_mappings,
-            )
+
+            if missing:
+                # Required fields missing — reroute to review
+                move_to_review(file_path, settings["review_path"])
+                routing = {
+                    "decision": "review",
+                    "reason": f"missing_extraction_fields:{','.join(missing)}",
+                    "type_name": best_type,
+                    "score": best_score,
+                }
+            else:
+                # Resolve vendor/company references for invoices
+                if best_type == "invoice":
+                    resolved, company_matched = resolve_invoice_fields(
+                        extracted_fields, extracted_text, config, logger
+                    )
+                    if not company_matched:
+                        move_to_review(file_path, settings["review_path"])
+                        routing = {
+                            "decision": "review",
+                            "reason": f"unmatched_company:{extracted_fields.get('customer_name', '')}",
+                            "type_name": best_type,
+                            "score": best_score,
+                        }
+                    else:
+                        extracted_fields = resolved
+
+                if routing["decision"] == "auto_file":
+                    generated_name = generate_name(
+                        file_path, best_type, config.naming_conventions,
+                        extracted_fields=extracted_fields,
+                    )
+                    filing = file_to_destination(
+                        file_path=file_path,
+                        generated_name=generated_name,
+                        type_name=best_type,
+                        destination_root=settings["destination_root"],
+                        folder_mappings=config.folder_mappings,
+                        extracted_fields=extracted_fields,
+                    )
 
         result = {
             "classification": classification,
@@ -74,6 +111,7 @@ def process_file(file_path: str, config, logger=None) -> dict:
             "best_score": best_score,
             "routing": routing,
             "filing": filing,
+            "extracted_fields": extracted_fields,
         }
 
         # 5. Log the outcome

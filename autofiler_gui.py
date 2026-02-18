@@ -27,6 +27,7 @@ class IntakeHandler(FileSystemEventHandler):
         # Small delay to let file writes finish
         time.sleep(1)
         try:
+            self.config.reload()
             result = process_file(event.src_path, self.config, self.logger)
             decision = result.get("routing", {}).get("decision", "unknown")
             best = result.get("best_type", "none")
