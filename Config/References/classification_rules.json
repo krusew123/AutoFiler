@@ -1,0 +1,10 @@
+{
+  "signal_weights": {
+    "format_match": 0.10,
+    "keyword_match": 0.50,
+    "pattern_match": 0.30,
+    "reference_match": 0.10
+  },
+  "min_signals_required": 1,
+  "fallback_type": null
+}

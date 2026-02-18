@@ -1,0 +1,13 @@
+{
+  "intake_path": "E:\\AutoFiler\\Intake",
+  "destination_root": "E:\\AutoFiler\\Filed",
+  "review_path": "E:\\AutoFiler\\Review",
+  "config_path": "C:\\AutoFiler\\Config",
+  "log_path": "E:\\AutoFiler\\Logs\\autofiler.log",
+  "polling_interval": 5,
+  "confidence_threshold": 0.75,
+  "tesseract_path": "C:\\Program Files\\Tesseract-OCR\\tesseract.exe",
+  "poppler_path": "C:\\poppler\\poppler-25.12.0\\Library\\bin",
+  "duplicate_handling": "timestamp_suffix",
+  "unrecognized_handling": "route_to_review"
+}

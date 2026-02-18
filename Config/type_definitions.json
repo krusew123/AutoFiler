@@ -1,0 +1,44 @@
+{
+  "types": {
+    "bank_statement": {
+      "container_formats": [".pdf"],
+      "mime_types": ["application/pdf"],
+      "content_keywords": [
+        "Account Summary", "Beginning Balance", "Ending Balance",
+        "Deposits", "Withdrawals", "Statement Period"
+      ],
+      "content_patterns": ["Statement\\s+Period", "Account\\s+Number"],
+      "keyword_threshold": 2,
+      "destination_subfolder": "Financial\\Bank Statements",
+      "naming_pattern": "{original_name}_{date}"
+    },
+    "w2_tax_form": {
+      "container_formats": [".pdf"],
+      "mime_types": ["application/pdf"],
+      "content_keywords": [
+        "Wage and Tax Statement", "W-2",
+        "Employer identification number",
+        "Federal income tax withheld", "Social security wages"
+      ],
+      "content_patterns": ["Form\\s+W-2", "OMB\\s+No"],
+      "keyword_threshold": 2,
+      "destination_subfolder": "Financial\\Tax Documents\\W-2",
+      "naming_pattern": "{original_name}_{date}"
+    },
+    "invoice": {
+      "container_formats": [".pdf", ".docx"],
+      "mime_types": [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ],
+      "content_keywords": [
+        "Invoice", "Bill To", "Amount Due",
+        "Payment Terms", "Invoice Number"
+      ],
+      "content_patterns": ["Invoice\\s*#", "Due\\s+Date", "Total\\s+Due"],
+      "keyword_threshold": 2,
+      "destination_subfolder": "Financial\\Invoices",
+      "naming_pattern": "{original_name}_{date}"
+    }
+  }
+}
