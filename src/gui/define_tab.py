@@ -2,10 +2,16 @@
 """Define tab — type creation form with optional document analysis panel."""
 
 import pathlib
+import re
 import tkinter as tk
 from tkinter import ttk, messagebox
 
 from src.gap_analyzer import analyze_document_for_new_type
+from src.config_learner import (
+    add_entity_reference,
+    add_alias_to_entity,
+    get_entity_names,
+)
 from src.type_creator_core import (
     next_available_code,
     validate_type_definition,
@@ -41,8 +47,8 @@ class DefineTab(tk.Frame):
         # Dynamic extraction field rows
         self._field_rows = []
 
-        # Suggestion checkbox vars (rebuilt when analysis is shown)
-        self._kw_check_vars = []   # [(keyword_str, BooleanVar)]
+        # Suggestion vars (rebuilt when analysis is shown)
+        self._kw_route_rows = []   # [(kw, route_var, role_var, entity_var)]
         self._pat_check_vars = []  # [(pattern_str, BooleanVar)]
 
         # Track whether analysis pane is showing
@@ -149,7 +155,7 @@ class DefineTab(tk.Frame):
         # Clear existing content
         for w in self._analysis_scroll.winfo_children():
             w.destroy()
-        self._kw_check_vars = []
+        self._kw_route_rows = []
         self._pat_check_vars = []
 
         f = self._analysis_scroll
@@ -166,7 +172,7 @@ class DefineTab(tk.Frame):
         preview.config(state=tk.DISABLED)
         preview.pack(fill=tk.X)
 
-        # --- Suggested keywords ---
+        # --- Suggested keywords with 5-way routing ---
         kw_list = analysis.get("suggested_keywords", [])
         if kw_list:
             kw_frame = tk.LabelFrame(
@@ -175,16 +181,70 @@ class DefineTab(tk.Frame):
             )
             kw_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
 
-            for kw in kw_list:
-                var = tk.BooleanVar(value=False)
-                tk.Checkbutton(kw_frame, text=kw, variable=var,
-                               font=("Courier", 8), anchor="w").pack(
-                    fill=tk.X)
-                self._kw_check_vars.append((kw, var))
+            tk.Label(
+                kw_frame,
+                text="Route each: Skip, Keyword (classification), "
+                     "Entity (reference),\nReq Field, or Opt Field "
+                     "(extraction)",
+                font=("Courier", 7), fg="gray",
+            ).pack(anchor="w", pady=(0, 4))
 
-            tk.Button(kw_frame, text="Add Selected to Keywords",
-                      command=self._add_selected_keywords,
-                      font=("Courier", 8)).pack(pady=(4, 0))
+            # Build entity list for alias dropdown
+            entity_names = get_entity_names(self.config)
+            entity_choices = ["(new entity)"] + [
+                f"{key} — {name}"
+                for key, name in sorted(entity_names.items())
+            ]
+
+            for kw in kw_list:
+                row_f = tk.Frame(kw_frame)
+                row_f.pack(fill=tk.X, pady=2)
+
+                # Keyword text
+                tk.Label(row_f, text=kw, font=("Courier", 8, "bold"),
+                         width=22, anchor="w").pack(side=tk.LEFT)
+
+                # Route dropdown
+                route_var = tk.StringVar(value="skip")
+                route_combo = ttk.Combobox(
+                    row_f, textvariable=route_var, width=10,
+                    values=["skip", "keyword", "entity",
+                            "req field", "opt field"],
+                    state="readonly",
+                )
+                route_combo.pack(side=tk.LEFT, padx=4)
+
+                # Entity detail frame (role + alias target) — hidden by default
+                detail_frame = tk.Frame(row_f)
+
+                role_var = tk.StringVar(value="vendor")
+                ttk.Combobox(
+                    detail_frame, textvariable=role_var, width=8,
+                    values=["vendor", "customer"], state="readonly",
+                ).pack(side=tk.LEFT, padx=(0, 4))
+
+                entity_var = tk.StringVar(value="(new entity)")
+                ttk.Combobox(
+                    detail_frame, textvariable=entity_var, width=22,
+                    values=entity_choices, state="readonly",
+                ).pack(side=tk.LEFT)
+
+                # Toggle detail visibility based on route selection
+                def _on_route_change(*_args, df=detail_frame, rv=route_var):
+                    if rv.get() == "entity":
+                        df.pack(side=tk.LEFT, padx=4)
+                    else:
+                        df.pack_forget()
+
+                route_var.trace_add("write", _on_route_change)
+
+                self._kw_route_rows.append(
+                    (kw, route_var, role_var, entity_var)
+                )
+
+            tk.Button(kw_frame, text="Apply Selections",
+                      command=self._apply_keyword_selections,
+                      font=("Courier", 8)).pack(pady=(6, 0))
 
         # --- Suggested patterns ---
         pat_list = analysis.get("suggested_patterns", [])
@@ -206,7 +266,7 @@ class DefineTab(tk.Frame):
                       command=self._add_selected_patterns,
                       font=("Courier", 8)).pack(pady=(4, 0))
 
-        # --- Detected fields (label:value pairs) ---
+        # --- Detected fields (label:value pairs) with req/opt toggle ---
         fields = analysis.get("detected_fields", [])
         if fields:
             fld_frame = tk.LabelFrame(
@@ -220,20 +280,28 @@ class DefineTab(tk.Frame):
                 row_f.pack(fill=tk.X, pady=1)
 
                 label_text = f"{fld['label']}: {fld['value']}"
-                if len(label_text) > 42:
-                    label_text = label_text[:39] + "..."
+                if len(label_text) > 36:
+                    label_text = label_text[:33] + "..."
                 tk.Label(row_f, text=label_text,
                          font=("Courier", 8), anchor="w").pack(
                     side=tk.LEFT, fill=tk.X, expand=True)
 
                 tk.Label(row_f, text=f"[{fld['field_type']}]",
                          font=("Courier", 7), fg="gray").pack(
-                    side=tk.LEFT, padx=(2, 4))
+                    side=tk.LEFT, padx=(2, 2))
+
+                # Required/Optional toggle
+                req_var = tk.BooleanVar(value=True)
+                tk.Checkbutton(row_f, text="Req", variable=req_var,
+                               font=("Courier", 7)).pack(
+                    side=tk.LEFT, padx=(0, 2))
 
                 tk.Button(
                     row_f, text="Add",
                     font=("Courier", 7),
-                    command=lambda d=fld: self._add_detected_field(d),
+                    command=lambda d=fld, r=req_var: self._add_detected_field(
+                        d, r.get()
+                    ),
                 ).pack(side=tk.RIGHT)
 
         if not kw_list and not pat_list and not fields:
@@ -244,25 +312,104 @@ class DefineTab(tk.Frame):
     # Analysis → Form transfer actions
     # ------------------------------------------------------------------
 
-    def _add_selected_keywords(self):
-        """Append checked keywords to the Keywords text box."""
-        selected = [kw for kw, var in self._kw_check_vars if var.get()]
-        if not selected:
-            return
-        existing = self._keywords_text.get("1.0", "end").strip()
-        existing_set = {
-            line.strip().lower()
-            for line in existing.splitlines() if line.strip()
-        }
-        new_kws = [kw for kw in selected if kw.lower() not in existing_set]
-        if new_kws:
-            if existing:
-                self._keywords_text.insert("end", "\n")
-            self._keywords_text.insert("end", "\n".join(new_kws))
-        # Uncheck added items
-        for kw, var in self._kw_check_vars:
-            if kw in selected:
-                var.set(False)
+    def _apply_keyword_selections(self):
+        """Process all keyword routing selections."""
+        keywords_to_add = []
+        entities_to_add = []
+        fields_to_add = []
+
+        for kw, route_var, role_var, entity_var in self._kw_route_rows:
+            route = route_var.get()
+            if route == "skip":
+                continue
+            elif route == "keyword":
+                keywords_to_add.append(kw)
+            elif route == "entity":
+                entities_to_add.append(
+                    (kw, role_var.get(), entity_var.get())
+                )
+            elif route in ("req field", "opt field"):
+                fields_to_add.append((kw, route == "req field"))
+
+        # Add classification keywords to text box
+        if keywords_to_add:
+            existing = self._keywords_text.get("1.0", "end").strip()
+            existing_set = {
+                line.strip().lower()
+                for line in existing.splitlines() if line.strip()
+            }
+            new_kws = [
+                kw for kw in keywords_to_add
+                if kw.lower() not in existing_set
+            ]
+            if new_kws:
+                if existing:
+                    self._keywords_text.insert("end", "\n")
+                self._keywords_text.insert("end", "\n".join(new_kws))
+
+        # Add entities to fieldname_ref.json
+        for kw, role, entity_choice in entities_to_add:
+            if entity_choice == "(new entity)":
+                add_entity_reference(kw, role, self.config)
+            else:
+                entity_key = entity_choice.split(" — ")[0].strip()
+                add_alias_to_entity(entity_key, kw, self.config)
+
+        # Add extraction field rows
+        for kw, required in fields_to_add:
+            field_name, pattern, ref_role = self._keyword_to_field(kw)
+            exists = any(
+                r["name"].get() == field_name for r in self._field_rows
+            )
+            if not exists:
+                self._add_field_row(
+                    name=field_name,
+                    patterns=pattern,
+                    required=required,
+                    ref_role=ref_role,
+                )
+
+        # Reset all routes to skip
+        for _kw, route_var, _role_var, _entity_var in self._kw_route_rows:
+            route_var.set("skip")
+
+    def _keyword_to_field(self, keyword):
+        """Convert a keyword phrase to a field name, pattern, and ref role."""
+        field_name = re.sub(r"[^a-z0-9]+", "_", keyword.lower()).strip("_")
+        safe_label = re.escape(keyword)
+        kw_lower = keyword.lower()
+
+        if "date" in kw_lower:
+            pattern = safe_label + r"[:\s]*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})"
+            ref_role = ""
+        elif any(w in kw_lower for w in (
+            "amount", "total", "balance", "charge", "price", "cost", "due",
+        )):
+            pattern = safe_label + r"[:\s]*\$?([\d,]+\.\d{2})"
+            ref_role = ""
+        elif any(w in kw_lower for w in (
+            "number", "num", "no", "id", "ref", "invoice", "po", "order",
+        )):
+            pattern = safe_label + r"[:\s]*([A-Za-z0-9][\-A-Za-z0-9]+)"
+            ref_role = ""
+        elif any(w in kw_lower for w in (
+            "vendor", "remit", "from", "sold by", "supplier",
+        )):
+            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+            ref_role = "vendor"
+        elif any(w in kw_lower for w in (
+            "customer", "client", "bill to", "prepared for", "ship to",
+        )):
+            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+            ref_role = "customer"
+        elif "name" in kw_lower:
+            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+            ref_role = "vendor"
+        else:
+            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+            ref_role = ""
+
+        return field_name, pattern, ref_role
 
     def _add_selected_patterns(self):
         """Append checked patterns to the Patterns text box."""
@@ -282,7 +429,7 @@ class DefineTab(tk.Frame):
             if pat in selected:
                 var.set(False)
 
-    def _add_detected_field(self, field_data):
+    def _add_detected_field(self, field_data, required=True):
         """Add a detected field as an extraction field row in the form."""
         # Check if field name already exists
         for row in self._field_rows:
@@ -294,7 +441,7 @@ class DefineTab(tk.Frame):
         self._add_field_row(
             name=field_data["field_name"],
             patterns=field_data["suggested_pattern"],
-            required=True,
+            required=required,
             ref_role=ref_role,
         )
 
