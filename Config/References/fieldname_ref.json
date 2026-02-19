@@ -101,5 +101,27 @@
       "001"
     ],
     "date_added": "2026-02-19"
+  },
+  "internal_revenue_service": {
+    "name": "Internal Revenue Service",
+    "aliases": [],
+    "roles": [
+      "vendor"
+    ],
+    "doc_types": [
+      "000"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "new_providence_capital": {
+    "name": "New Providence Capital",
+    "aliases": [],
+    "roles": [
+      "vendor"
+    ],
+    "doc_types": [
+      "000"
+    ],
+    "date_added": "2026-02-19"
   }
 }

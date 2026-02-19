@@ -51,7 +51,8 @@ class DefineTab(tk.Frame):
         self._field_rows = []
 
         # Suggestion vars (rebuilt when analysis is shown)
-        self._kw_route_rows = []   # [(kw, route_var, role_var, entity_var)]
+        self._kw_route_rows = []   # [(kw, route_var, role_var, entity_var, frame)]
+        self._kw_deleted = set()   # keywords explicitly removed by user
         self._pat_check_vars = []  # [(pattern_str, BooleanVar)]
 
         # Track whether analysis pane is showing
@@ -159,6 +160,7 @@ class DefineTab(tk.Frame):
         for w in self._analysis_scroll.winfo_children():
             w.destroy()
         self._kw_route_rows = []
+        self._kw_deleted = set()
         self._pat_check_vars = []
 
         f = self._analysis_scroll
@@ -170,7 +172,7 @@ class DefineTab(tk.Frame):
         text_frame = tk.LabelFrame(f, text="Extracted Text  (select text → route below)",
                                    padx=4, pady=4)
         text_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
-        preview = tk.Text(text_frame, height=10, width=44, font=("Courier", 8),
+        preview = tk.Text(text_frame, height=20, width=44, font=("Courier", 8),
                           wrap=tk.WORD)
         preview.insert("1.0", (self._extracted_text or "")[:5000])
         # Allow selection and copy but block all edits
@@ -390,16 +392,17 @@ class DefineTab(tk.Frame):
 
     def _remove_kw_row(self, row_frame, keyword):
         """Delete a keyword row and backfill from pool if available."""
-        # Remove from route rows
+        # Remove from route rows and mark as deleted
         self._kw_route_rows = [
             r for r in self._kw_route_rows if r[4] is not row_frame
         ]
         row_frame.destroy()
+        self._kw_deleted.add(keyword)
 
-        # Find next keyword from pool not currently displayed
+        # Backfill from pool — skip displayed and deleted keywords
         displayed = {r[0] for r in self._kw_route_rows}
         for candidate in self._kw_pool:
-            if candidate not in displayed:
+            if candidate not in displayed and candidate not in self._kw_deleted:
                 self._add_kw_row(candidate)
                 break
 
@@ -414,11 +417,9 @@ class DefineTab(tk.Frame):
         displayed = {r[0].lower() for r in self._kw_route_rows}
         if kw.lower() in displayed:
             return
-        # If at max, remove the last (lowest-ranked) row
+        # Only add if under the max
         if len(self._kw_route_rows) >= self._kw_display_max:
-            last = self._kw_route_rows[-1]
-            last[4].destroy()
-            self._kw_route_rows = self._kw_route_rows[:-1]
+            return
         self._add_kw_row(kw)
         self._kw_write_in.set("")
         self._update_kw_count()
@@ -626,7 +627,7 @@ class DefineTab(tk.Frame):
     # ------------------------------------------------------------------
 
     def _build_form_pane(self):
-        """Build the scrollable form panel — same fields as original."""
+        """Build the scrollable form panel with required/all toggle."""
         outer = self._form_outer
 
         self._form_canvas = tk.Canvas(outer, highlightthickness=0)
@@ -650,11 +651,20 @@ class DefineTab(tk.Frame):
                                lambda e: self._bind_mousewheel(self._form_canvas))
 
         f = self._form_frame
+        self._optional_widgets = []  # widgets to show/hide with toggle
+        self._show_all_inputs = False
 
-        # --- Basic fields ---
+        # --- Toggle button ---
+        self._toggle_btn = tk.Button(
+            f, text="All Inputs", font=("Courier", 8, "bold"),
+            command=self._toggle_form_view,
+        )
+        self._toggle_btn.grid(row=0, column=2, sticky="e", padx=6, pady=3)
+
+        # --- Required fields ---
         _hint = ("Courier", 7)  # reusable hint font
 
-        row = 0
+        row = 1
         tk.Label(f, text="Type Name:", font=("Courier", 9, "bold")).grid(
             row=row, column=0, sticky="w", padx=6, pady=3)
         self._name_var = tk.StringVar()
@@ -673,15 +683,6 @@ class DefineTab(tk.Frame):
                  font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
 
         row += 1
-        tk.Label(f, text="MIME Types:", font=("Courier", 9, "bold")).grid(
-            row=row, column=0, sticky="w", padx=6, pady=3)
-        self._mime_var = tk.StringVar()
-        tk.Entry(f, textvariable=self._mime_var, width=40).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="Optional byte-signature types",
-                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
-
-        row += 1
         tk.Label(f, text="Content Keywords:", font=("Courier", 9, "bold")).grid(
             row=row, column=0, sticky="nw", padx=6, pady=3)
         self._keywords_text = tk.Text(f, width=40, height=4,
@@ -690,55 +691,79 @@ class DefineTab(tk.Frame):
         tk.Label(f, text="One per line, drives scoring",
                  font=_hint, fg="gray").grid(row=row, column=2, sticky="nw")
 
-        row += 1
-        tk.Label(f, text="Content Patterns:", font=("Courier", 9, "bold")).grid(
-            row=row, column=0, sticky="nw", padx=6, pady=3)
+        # --- Optional fields (hidden by default) ---
+        row += 1  # row 4: MIME Types
+        w1 = tk.Label(f, text="MIME Types:", font=("Courier", 9, "bold"))
+        w1.grid(row=row, column=0, sticky="w", padx=6, pady=3)
+        self._mime_var = tk.StringVar()
+        w2 = tk.Entry(f, textvariable=self._mime_var, width=40)
+        w2.grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        w3 = tk.Label(f, text="Optional byte-signature types",
+                      font=_hint, fg="gray")
+        w3.grid(row=row, column=2, sticky="w")
+        self._optional_widgets.extend([w1, w2, w3])
+
+        row += 1  # row 5: Content Patterns
+        w1 = tk.Label(f, text="Content Patterns:", font=("Courier", 9, "bold"))
+        w1.grid(row=row, column=0, sticky="nw", padx=6, pady=3)
         self._patterns_text = tk.Text(f, width=40, height=3,
                                       font=("Courier", 9))
         self._patterns_text.grid(row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="One regex per line, optional",
-                 font=_hint, fg="gray").grid(row=row, column=2, sticky="nw")
+        w3 = tk.Label(f, text="One regex per line, optional",
+                      font=_hint, fg="gray")
+        w3.grid(row=row, column=2, sticky="nw")
+        self._optional_widgets.extend([w1, self._patterns_text, w3])
 
-        row += 1
-        tk.Label(f, text="Keyword Threshold:", font=("Courier", 9, "bold")).grid(
-            row=row, column=0, sticky="w", padx=6, pady=3)
+        row += 1  # row 6: Keyword Threshold
+        w1 = tk.Label(f, text="Keyword Threshold:", font=("Courier", 9, "bold"))
+        w1.grid(row=row, column=0, sticky="w", padx=6, pady=3)
         self._threshold_var = tk.IntVar(value=2)
-        tk.Spinbox(f, from_=1, to=20, textvariable=self._threshold_var,
-                   width=5).grid(row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="Min keyword hits to classify",
-                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
+        w2 = tk.Spinbox(f, from_=1, to=20, textvariable=self._threshold_var,
+                         width=5)
+        w2.grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        w3 = tk.Label(f, text="Min keyword hits to classify",
+                      font=_hint, fg="gray")
+        w3.grid(row=row, column=2, sticky="w")
+        self._optional_widgets.extend([w1, w2, w3])
 
-        row += 1
-        tk.Label(f, text="Destination Subfolder:", font=("Courier", 9, "bold")).grid(
-            row=row, column=0, sticky="w", padx=6, pady=3)
+        row += 1  # row 7: Destination Subfolder
+        w1 = tk.Label(f, text="Destination Subfolder:",
+                      font=("Courier", 9, "bold"))
+        w1.grid(row=row, column=0, sticky="w", padx=6, pady=3)
         self._dest_var = tk.StringVar()
-        tk.Entry(f, textvariable=self._dest_var, width=40).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="Staging subdirectory path",
-                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
+        w2 = tk.Entry(f, textvariable=self._dest_var, width=40)
+        w2.grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        w3 = tk.Label(f, text="Staging subdirectory path",
+                      font=_hint, fg="gray")
+        w3.grid(row=row, column=2, sticky="w")
+        self._optional_widgets.extend([w1, w2, w3])
 
-        row += 1
-        tk.Label(f, text="Naming Pattern:", font=("Courier", 9, "bold")).grid(
-            row=row, column=0, sticky="w", padx=6, pady=3)
+        row += 1  # row 8: Naming Pattern
+        w1 = tk.Label(f, text="Naming Pattern:", font=("Courier", 9, "bold"))
+        w1.grid(row=row, column=0, sticky="w", padx=6, pady=3)
         self._naming_var = tk.StringVar(value="{original_name}_{date}")
-        tk.Entry(f, textvariable=self._naming_var, width=40).grid(
-            row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="Template using {field_name} tokens",
-                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
+        w2 = tk.Entry(f, textvariable=self._naming_var, width=40)
+        w2.grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        w3 = tk.Label(f, text="Template using {field_name} tokens",
+                      font=_hint, fg="gray")
+        w3.grid(row=row, column=2, sticky="w")
+        self._optional_widgets.extend([w1, w2, w3])
 
-        # --- Extraction Fields section ---
+        # --- Extraction Fields section (optional) ---
         row += 1
-        ttk.Separator(f, orient="horizontal").grid(
-            row=row, column=0, columnspan=3, sticky="ew",
-            padx=6, pady=(12, 4))
+        w_sep = ttk.Separator(f, orient="horizontal")
+        w_sep.grid(row=row, column=0, columnspan=3, sticky="ew",
+                   padx=6, pady=(12, 4))
+        self._optional_widgets.append(w_sep)
 
         row += 1
-        tk.Label(f, text="Extraction Fields",
-                 font=("Courier", 10, "bold")).grid(
-            row=row, column=0, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="Regex fields to extract from text",
-                 font=_hint, fg="gray").grid(
-            row=row, column=1, sticky="w", padx=6)
+        w1 = tk.Label(f, text="Extraction Fields",
+                      font=("Courier", 10, "bold"))
+        w1.grid(row=row, column=0, sticky="w", padx=6, pady=3)
+        w2 = tk.Label(f, text="Regex fields to extract from text",
+                      font=_hint, fg="gray")
+        w2.grid(row=row, column=1, sticky="w", padx=6)
+        self._optional_widgets.extend([w1, w2])
 
         row += 1
         self._fields_container = tk.Frame(f)
@@ -746,43 +771,54 @@ class DefineTab(tk.Frame):
                                     sticky="ew", padx=6)
         self._next_field_row = row + 1
 
-        tk.Button(f, text="+ Add Field", command=self._add_field_row).grid(
-            row=row, column=2, sticky="e", padx=6)
+        w_add = tk.Button(f, text="+ Add Field",
+                          command=self._add_field_row)
+        w_add.grid(row=row, column=2, sticky="e", padx=6)
+        self._optional_widgets.extend([self._fields_container, w_add])
 
-        # --- Staging Field Mapping ---
+        # --- Staging Field Mapping (optional) ---
         row = self._next_field_row + 1
-        ttk.Separator(f, orient="horizontal").grid(
-            row=row, column=0, columnspan=3, sticky="ew",
-            padx=6, pady=(12, 4))
+        w_sep2 = ttk.Separator(f, orient="horizontal")
+        w_sep2.grid(row=row, column=0, columnspan=3, sticky="ew",
+                    padx=6, pady=(12, 4))
+        self._optional_widgets.append(w_sep2)
 
         row += 1
-        tk.Label(f, text="Staging Field Mapping",
-                 font=("Courier", 10, "bold")).grid(
-            row=row, column=0, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="Maps fields to coded filename slots",
-                 font=_hint, fg="gray").grid(
-            row=row, column=1, sticky="w", padx=6)
+        w1 = tk.Label(f, text="Staging Field Mapping",
+                      font=("Courier", 10, "bold"))
+        w1.grid(row=row, column=0, sticky="w", padx=6, pady=3)
+        w2 = tk.Label(f, text="Maps fields to coded filename slots",
+                      font=_hint, fg="gray")
+        w2.grid(row=row, column=1, sticky="w", padx=6)
+        self._optional_widgets.extend([w1, w2])
 
         row += 1
-        tk.Label(
+        w_note = tk.Label(
             f,
             text="Optional: assign extraction fields to staging "
                  "filename slots.\nLeave empty for slots that "
                  "don't apply to this type.",
             font=_hint, fg="gray", justify="left",
-        ).grid(row=row, column=0, columnspan=3, sticky="w",
-               padx=6, pady=(0, 4))
+        )
+        w_note.grid(row=row, column=0, columnspan=3, sticky="w",
+                    padx=6, pady=(0, 4))
+        self._optional_widgets.append(w_note)
 
         self._staging_vars = {}
         for slot in _STAGING_SLOTS:
             row += 1
-            tk.Label(f, text=f"  {slot}:", font=("Courier", 9)).grid(
-                row=row, column=0, sticky="w", padx=6, pady=2)
+            w1 = tk.Label(f, text=f"  {slot}:", font=("Courier", 9))
+            w1.grid(row=row, column=0, sticky="w", padx=6, pady=2)
             var = tk.StringVar()
             combo = ttk.Combobox(f, textvariable=var, width=30,
                                  state="readonly")
             combo.grid(row=row, column=1, sticky="w", padx=6, pady=2)
             self._staging_vars[slot] = (var, combo)
+            self._optional_widgets.extend([w1, combo])
+
+        # Hide optional widgets by default
+        for w in self._optional_widgets:
+            w.grid_remove()
 
         # --- Buttons ---
         row += 1
@@ -814,6 +850,22 @@ class DefineTab(tk.Frame):
             "<MouseWheel>",
             lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"),
         )
+
+    # ------------------------------------------------------------------
+    # Required / All inputs toggle
+    # ------------------------------------------------------------------
+
+    def _toggle_form_view(self):
+        """Toggle between required-only and all-inputs form view."""
+        self._show_all_inputs = not self._show_all_inputs
+        if self._show_all_inputs:
+            for w in self._optional_widgets:
+                w.grid()
+            self._toggle_btn.config(text="Req Inputs")
+        else:
+            for w in self._optional_widgets:
+                w.grid_remove()
+            self._toggle_btn.config(text="All Inputs")
 
     # ------------------------------------------------------------------
     # Extraction field rows
@@ -1030,5 +1082,6 @@ class DefineTab(tk.Frame):
         self._text_preview = None
         self._kw_pool = []
         self._kw_route_rows = []
+        self._kw_deleted = set()
         self._context_frame.pack_forget()
         self._hide_analysis_pane()
