@@ -66,6 +66,8 @@ class ConfigLoader:
     def naming_conventions(self) -> dict:
         return self._load("References/naming_conventions.json")
 
+    # -- Stage 2 references (not consumed by the Stage 1 pipeline) --
+
     @property
     def company_reference(self) -> dict:
         return self._load("References/company_reference.json")
@@ -73,6 +75,8 @@ class ConfigLoader:
     @property
     def vendor_reference(self) -> dict:
         return self._load("References/vendor_reference.json")
+
+    # -- Stage 1 entity reference (used by field_resolver) --
 
     @property
     def fieldname_reference(self) -> dict:

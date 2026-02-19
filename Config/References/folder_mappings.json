@@ -1,5 +1,3 @@
 {
-  "bank_statement": "Financial\\Bank Statements",
-  "w2_tax_form": "Financial\\Tax Documents\\W-2",
   "invoice": "Accounting\\Vendors\\{vendor_name}"
 }

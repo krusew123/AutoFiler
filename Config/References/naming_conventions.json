@@ -1,7 +1,5 @@
 {
   "patterns": {
-    "bank_statement": "{original_name}_{date}",
-    "w2_tax_form": "{original_name}_{date}",
     "invoice": "{invoice_number} - {customer_name} - {invoice_date}"
   },
   "date_format": "%Y-%m-%d",

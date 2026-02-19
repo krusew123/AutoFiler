@@ -78,20 +78,11 @@
     ],
     "date_added": "2026-02-19"
   },
-  "xtreme_energy": {
-    "name": "XTREME ENERGY",
-    "aliases": [],
-    "roles": [
-      "vendor"
-    ],
-    "doc_types": [
-      "001"
-    ],
-    "date_added": "2026-02-19"
-  },
   "xtreme_energy_company": {
     "name": "XTREME ENERGY COMPANY",
-    "aliases": [],
+    "aliases": [
+      "XTREME ENERGY"
+    ],
     "roles": [
       "vendor"
     ],
