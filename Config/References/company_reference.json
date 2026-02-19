@@ -1,9 +1,9 @@
 {
   "companies": {
     "william_kruse_co": {
-      "name": "William Kruse & Co LLC",
+      "name": "William Kruse & Company LLC",
       "code": "WKCO",
-      "aliases": ["WKCO", "William Kruse", "Wm Kruse", "William Kruse & Co"]
+      "aliases": ["WKCO", "William Kruse & Co"]
     }
   }
 }

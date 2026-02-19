@@ -1,3 +1,15 @@
 {
-  "vendors": {}
+  "vendors": {
+    "stericycle_inc": {
+      "name": "Stericycle, Inc.",
+      "aliases": [],
+      "date_added": "2026-02-18",
+      "invoice_number": "8013197580",
+      "invoice_date": "01-18-2026",
+      "address": "2355 Waukegan Road\nBannockburn, IL 60015",
+      "account_id": "1000957726",
+      "phone": "1-866-783-7422",
+      "tax_id": "36-3640402"
+    }
+  }
 }
