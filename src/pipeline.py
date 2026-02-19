@@ -1,23 +1,25 @@
 # src/pipeline.py
-"""Main processing pipeline: classify -> score -> route -> name -> file."""
+"""Stage 1 pipeline: classify -> score -> route -> extract -> stage."""
+
+import pathlib
+import shutil
 
 from src.classifier import classify_file
 from src.scorer import score_candidates, select_best_candidate
 from src.router import route_file, move_to_review
-from src.name_generator import generate_name
-from src.filer import file_to_destination
 from src.content_matcher import extract_fields
 from src.guards import check_file
-from src.cross_referencer import cross_reference_fields
 from src.sidecar import generate_sidecar, hash_file
+from src.staging_namer import generate_staging_name
+from src.vault import archive_to_vault
 
 
 def process_file(file_path: str, config, logger=None) -> dict:
     """
-    Run the full pipeline on a single file.
+    Run the Stage 1 pipeline on a single file.
 
     Returns a result dict with classification, scoring, routing,
-    and filing details.
+    staging, and vault details.
     """
     # 0. Guard check
     guard_reason = check_file(file_path)
@@ -30,7 +32,8 @@ def process_file(file_path: str, config, logger=None) -> dict:
             "best_type": None,
             "best_score": None,
             "routing": {"decision": "rejected", "reason": guard_reason},
-            "filing": None,
+            "staging": None,
+            "vault": None,
         }
 
     settings = config.settings
@@ -56,8 +59,9 @@ def process_file(file_path: str, config, logger=None) -> dict:
             review_path=settings["review_path"],
         )
 
-        # 4. Extract fields & cross-reference & Name & File (only if auto-filed)
-        filing = None
+        # 4. Extract fields & stage (only if auto-filed)
+        staging = None
+        vault = None
         extracted_fields = None
         if routing["decision"] == "auto_file":
             extracted_text = classification.get("extracted_text", "")
@@ -75,51 +79,57 @@ def process_file(file_path: str, config, logger=None) -> dict:
                     "score": best_score,
                 }
             else:
-                # Cross-reference any fields that have reference config
-                resolved, unresolved = cross_reference_fields(
-                    extracted_fields, extracted_text, best_type, config, logger
+                # Hash source file
+                file_hash = hash_file(file_path)
+
+                # Get type config for staging
+                type_cfg = config.type_definitions.get("types", {}).get(best_type, {})
+                doc_type_code = type_cfg.get("code", "000")
+
+                # Archive original to vault
+                vault_file = archive_to_vault(
+                    file_path=file_path,
+                    doc_type_code=doc_type_code,
+                    vault_path=settings["vault_path"],
                 )
-                if unresolved:
-                    move_to_review(file_path, settings["review_path"])
-                    routing = {
-                        "decision": "review",
-                        "reason": f"unresolved_fields:{','.join(unresolved)}",
-                        "type_name": best_type,
-                        "score": best_score,
-                    }
-                else:
-                    extracted_fields = resolved
+                vault = {"vault_file": vault_file, "doc_type_code": doc_type_code}
 
-                if routing["decision"] == "auto_file":
-                    # Hash before moving
-                    file_hash = hash_file(file_path)
+                # Generate staging name + modified fields
+                staging_stem, modified_fields = generate_staging_name(
+                    type_name=best_type,
+                    type_config=type_cfg,
+                    extracted_fields=extracted_fields,
+                    file_path=file_path,
+                )
 
-                    generated_name = generate_name(
-                        file_path, best_type, config.naming_conventions,
-                        extracted_fields=extracted_fields,
-                    )
-                    filing = file_to_destination(
-                        file_path=file_path,
-                        generated_name=generated_name,
-                        type_name=best_type,
-                        destination_root=settings["destination_root"],
-                        folder_mappings=config.folder_mappings,
-                        extracted_fields=extracted_fields,
-                    )
+                # Move file from intake to staging
+                staging_path = pathlib.Path(settings["staging_path"])
+                staging_path.mkdir(parents=True, exist_ok=True)
+                ext = pathlib.Path(file_path).suffix
+                staging_filename = f"{staging_stem}{ext}"
+                staged_dest = staging_path / staging_filename
+                shutil.move(file_path, staged_dest)
 
-                    # Generate sidecar
-                    sidecar_path = settings.get("sidecar_path")
-                    if sidecar_path:
-                        generate_sidecar(
-                            source_file_path=file_path,
-                            filing_result=filing,
-                            doc_type=best_type,
-                            confidence_score=best_score,
-                            extracted_fields=extracted_fields,
-                            extracted_text=extracted_text,
-                            sidecar_path=sidecar_path,
-                            file_hash=file_hash,
-                        )
+                staging = {
+                    "staging_filename": staging_filename,
+                    "staging_file": str(staged_dest),
+                    "modified_fields": modified_fields,
+                }
+
+                # Generate sidecar alongside staged file
+                generate_sidecar(
+                    source_file_path=file_path,
+                    doc_type=best_type,
+                    doc_type_code=doc_type_code,
+                    confidence_score=best_score,
+                    extracted_fields=extracted_fields,
+                    modified_fields=modified_fields,
+                    staging_filename=staging_filename,
+                    vault_path=vault_file,
+                    extracted_text=extracted_text,
+                    sidecar_path=settings["staging_path"],
+                    file_hash=file_hash,
+                )
 
         result = {
             "classification": classification,
@@ -127,7 +137,8 @@ def process_file(file_path: str, config, logger=None) -> dict:
             "best_type": best_type,
             "best_score": best_score,
             "routing": routing,
-            "filing": filing,
+            "staging": staging,
+            "vault": vault,
             "extracted_fields": extracted_fields,
         }
 

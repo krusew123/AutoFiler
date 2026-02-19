@@ -1,6 +1,7 @@
 {
   "types": {
     "bank_statement": {
+      "code": "001",
       "container_formats": [".pdf"],
       "mime_types": ["application/pdf"],
       "content_keywords": [
@@ -10,9 +11,15 @@
       "content_patterns": ["Statement\\s+Period", "Account\\s+Number"],
       "keyword_threshold": 2,
       "destination_subfolder": "Financial\\Bank Statements",
-      "naming_pattern": "{original_name}_{date}"
+      "naming_pattern": "{original_name}_{date}",
+      "staging_fields": {
+        "vendor": "bank_name",
+        "date": "statement_date",
+        "reference": "account_number"
+      }
     },
     "w2_tax_form": {
+      "code": "002",
       "container_formats": [".pdf"],
       "mime_types": ["application/pdf"],
       "content_keywords": [
@@ -23,9 +30,15 @@
       "content_patterns": ["Form\\s+W-2", "OMB\\s+No"],
       "keyword_threshold": 2,
       "destination_subfolder": "Financial\\Tax Documents\\W-2",
-      "naming_pattern": "{original_name}_{date}"
+      "naming_pattern": "{original_name}_{date}",
+      "staging_fields": {
+        "vendor": "employer_name",
+        "customer": "employee_name",
+        "date": "tax_year"
+      }
     },
     "invoice": {
+      "code": "003",
       "container_formats": [".pdf", ".docx"],
       "mime_types": [
         "application/pdf",
@@ -50,6 +63,13 @@
       "keyword_threshold": 2,
       "destination_subfolder": "Accounting\\Vendors\\VendorName",
       "naming_pattern": "{original_name}_{date}",
+      "staging_fields": {
+        "vendor": "vendor_name",
+        "customer": "customer_name",
+        "date": "invoice_date",
+        "reference": "invoice_number",
+        "amount": "total_amount"
+      },
       "extraction_fields": {
         "vendor_name": {
           "patterns": [
@@ -90,6 +110,15 @@
             "Date[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})"
           ],
           "required": true
+        },
+        "total_amount": {
+          "patterns": [
+            "Total\\s+Due[:\\s]*\\$?([\\d,]+\\.?\\d*)",
+            "Grand\\s+Total[:\\s]*\\$?([\\d,]+\\.?\\d*)",
+            "Amount\\s+Due[:\\s]*\\$?([\\d,]+\\.?\\d*)",
+            "Balance\\s+Due[:\\s]*\\$?([\\d,]+\\.?\\d*)"
+          ],
+          "required": false
         },
         "address": {
           "patterns": [

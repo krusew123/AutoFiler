@@ -31,20 +31,20 @@ class AutoFilerLogger:
             f.write(json.dumps(entry) + "\n")
 
     def log_auto_file(self, pipeline_result: dict):
-        """Log an automatic filing action."""
+        """Log a Stage 1 staging action."""
+        staging = pipeline_result.get("staging") or {}
+        vault = pipeline_result.get("vault") or {}
         entry = {
-            "action": "auto_file",
+            "action": "auto_stage",
             "file": pipeline_result["classification"]["file_path"],
             "type": pipeline_result["best_type"],
             "score": pipeline_result["best_score"],
-            "destination": pipeline_result["filing"]["destination"]
-                if pipeline_result.get("filing") else None,
-            "duplicate": pipeline_result["filing"]["duplicate_handled"]
-                if pipeline_result.get("filing") else False,
+            "staging_file": staging.get("staging_file"),
+            "vault_file": vault.get("vault_file"),
         }
         self._write(entry)
         self._py_logger.info(
-            f"Auto-filed: {entry['file']} -> {entry['destination']} "
+            f"Staged: {entry['file']} -> {entry['staging_file']} "
             f"(type={entry['type']}, score={entry['score']})"
         )
 

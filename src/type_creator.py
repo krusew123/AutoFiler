@@ -51,8 +51,12 @@ def create_new_type(config) -> str | None:
     naming_input = input("  Naming pattern [{original_name}_{date}]: ").strip()
     naming_pattern = naming_input if naming_input else "{original_name}_{date}"
 
+    # -- Auto-assign the next available 3-digit code --
+    next_code = _next_available_code(existing)
+
     # -- Build the type definition --
     new_type = {
+        "code": next_code,
         "container_formats": container_formats,
         "mime_types": mime_types,
         "content_keywords": content_keywords,
@@ -64,6 +68,7 @@ def create_new_type(config) -> str | None:
 
     # -- Confirm before saving --
     print(f"\n  New type '{type_name}':")
+    print(f"    Code:         {next_code}")
     print(f"    Formats:      {container_formats}")
     print(f"    Keywords:     {content_keywords}")
     print(f"    Patterns:     {content_patterns}")
@@ -81,6 +86,20 @@ def create_new_type(config) -> str | None:
 
     print(f"  Type '{type_name}' saved and ready for use.")
     return type_name
+
+
+def _next_available_code(existing_types: dict) -> str:
+    """Find the next available 3-digit code, skipping '000' (reserved)."""
+    used = set()
+    for type_def in existing_types.values():
+        code = type_def.get("code", "")
+        if code.isdigit():
+            used.add(int(code))
+    # Start at 1 (skip 000 = reserved for unknown/unclassified)
+    candidate = 1
+    while candidate in used:
+        candidate += 1
+    return str(candidate).zfill(3)
 
 
 def _prompt_list(prompt: str) -> list[str]:

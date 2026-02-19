@@ -18,25 +18,31 @@ def hash_file(file_path: str) -> str:
 
 def generate_sidecar(
     source_file_path: str,
-    filing_result: dict,
     doc_type: str,
+    doc_type_code: str,
     confidence_score: float | None,
     extracted_fields: dict | None,
+    modified_fields: dict,
+    staging_filename: str,
+    vault_path: str,
     extracted_text: str,
     sidecar_path: str,
     file_hash: str,
 ) -> str:
     """
-    Write a JSON sidecar file for a filed document.
+    Write a JSON sidecar file alongside a staged document.
 
     Args:
         source_file_path: Original intake file path.
-        filing_result: Dict returned by filer.file_to_destination().
         doc_type: Classified document type name.
+        doc_type_code: 3-digit type code.
         confidence_score: Classification confidence score.
         extracted_fields: Dict of extracted field values (may be None).
+        modified_fields: Dict of truncated staging field values.
+        staging_filename: The coded staging filename (with extension).
+        vault_path: Path to the archived original in the vault.
         extracted_text: Full OCR text.
-        sidecar_path: Root directory for sidecar files.
+        sidecar_path: Directory for sidecar files (same as staging dir).
         file_hash: SHA-256 hex digest of the source file.
 
     Returns:
@@ -45,18 +51,21 @@ def generate_sidecar(
     sidecar_dir = pathlib.Path(sidecar_path)
     sidecar_dir.mkdir(parents=True, exist_ok=True)
 
-    source_name = pathlib.Path(source_file_path).stem
-    sidecar_file = sidecar_dir / f"{source_name}.json"
+    staging_stem = pathlib.Path(staging_filename).stem
+    sidecar_file = sidecar_dir / f"{staging_stem}.json"
 
     sidecar_data = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "processing_timestamp": datetime.now().isoformat(),
         "source_file": source_file_path,
         "source_hash": file_hash,
+        "vault_file": vault_path,
         "document_type": doc_type,
+        "doc_type_code": doc_type_code,
         "confidence_score": confidence_score,
         "extracted_fields": extracted_fields or {},
-        "destination": filing_result.get("destination"),
+        "modified_fields": modified_fields,
+        "staging_filename": staging_stem,
         "ocr_text": extracted_text,
     }
 

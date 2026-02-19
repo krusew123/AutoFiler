@@ -11,5 +11,7 @@
   "duplicate_handling": "timestamp_suffix",
   "unrecognized_handling": "route_to_review",
   "fuzzy_match_threshold": 0.80,
-  "sidecar_path": "E:\\AutoFiler\\Sidecars"
+  "sidecar_path": "E:\\AutoFiler\\Sidecars",
+  "staging_path": "E:\\AutoFiler\\Staging",
+  "vault_path": "E:\\AutoFiler\\Vault"
 }
