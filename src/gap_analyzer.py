@@ -121,6 +121,89 @@ def analyze_document_for_new_type(extracted_text: str) -> dict:
     }
 
 
+def find_nearby_keywords(
+    text: str,
+    keyword: str,
+    window: int = 3,
+    existing_population: set | None = None,
+) -> list[str]:
+    """
+    Find candidate keywords near occurrences of *keyword* in *text*.
+
+    Algorithm:
+    1. Find all lines containing keyword (case-insensitive)
+    2. Collect lines within ±window lines of each match
+    3. Extract candidate phrases (labels before ':', capitalized multi-word,
+       ALL-CAPS phrases) — same logic as _suggest_keywords
+    4. Filter stopwords, the keyword itself, and existing_population
+    5. Return deduplicated list ranked by frequency
+    """
+    existing_population = existing_population or set()
+    existing_lower = {p.lower() for p in existing_population}
+    kw_lower = keyword.lower()
+    lines = text.splitlines()
+
+    # Find matching line indices
+    match_indices = [
+        i for i, line in enumerate(lines) if kw_lower in line.lower()
+    ]
+    if not match_indices:
+        return []
+
+    # Collect neighborhood lines (deduplicated, ordered)
+    neighborhood_indices = set()
+    for idx in match_indices:
+        for offset in range(-window, window + 1):
+            neighbor = idx + offset
+            if 0 <= neighbor < len(lines):
+                neighborhood_indices.add(neighbor)
+
+    # Extract candidate phrases from neighborhood
+    candidates = Counter()
+    for idx in sorted(neighborhood_indices):
+        stripped = lines[idx].strip()
+        if not stripped:
+            continue
+
+        # Labels before ':'
+        if ":" in stripped:
+            label = stripped.split(":")[0].strip()
+            if 2 <= len(label) <= 50 and not label.isdigit():
+                candidates[label] += 1
+
+        # Capitalized multi-word phrases (2-3 words)
+        cap_phrases = re.findall(
+            r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,2})\b", stripped
+        )
+        for phrase in cap_phrases:
+            candidates[phrase] += 1
+
+        # ALL-CAPS phrases (2+ words)
+        upper_phrases = re.findall(
+            r"\b([A-Z]{2,}(?:\s+[A-Z]{2,}){1,2})\b", stripped
+        )
+        for phrase in upper_phrases:
+            candidates[phrase] += 1
+
+    # Filter
+    filtered = {}
+    for phrase, count in candidates.items():
+        phrase_lower = phrase.lower()
+        if phrase_lower == kw_lower:
+            continue
+        if phrase_lower in existing_lower:
+            continue
+        words = phrase_lower.split()
+        if len(words) == 1 and phrase_lower in _STOPWORDS:
+            continue
+        if len(phrase) < 3 or len(phrase) > 50:
+            continue
+        filtered[phrase] = count
+
+    ranked = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
+    return [phrase for phrase, _ in ranked]
+
+
 def analyze_extraction_gap(
     extracted_text: str,
     type_name: str,
@@ -241,9 +324,9 @@ def _suggest_keywords(
             continue
         filtered[phrase] = count
 
-    # Sort by frequency, return top 25 (UI shows 15, keeps rest as backfill)
+    # Sort by frequency, return top 20
     ranked = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
-    return [phrase for phrase, _ in ranked[:25]]
+    return [phrase for phrase, _ in ranked[:20]]
 
 
 def _suggest_patterns(text: str, existing_patterns: list[str]) -> list[str]:
