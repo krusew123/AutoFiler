@@ -73,3 +73,7 @@ class ConfigLoader:
     @property
     def vendor_reference(self) -> dict:
         return self._load("References/vendor_reference.json")
+
+    @property
+    def fieldname_reference(self) -> dict:
+        return self._load("References/fieldname_ref.json")

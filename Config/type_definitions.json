@@ -49,7 +49,10 @@
             "^(?:From|Sender|Vendor|Sold\\s*By)\\s*:\\s*(.+?)$",
             "^(.+?,\\s*(?:Inc|LLC|Corp|Ltd|Company|LP|LLP)\\.?)\\s*$"
           ],
-          "required": true
+          "required": true,
+          "reference_lookup": {
+            "role": "vendor"
+          }
         },
         "customer_name": {
           "patterns": [
@@ -58,7 +61,10 @@
             "Prepared\\s+For\\b.*\\n\\s*(.+?)(?:\\s+\\d|\\n)",
             "(?:Sold\\s*To|Ship\\s*To)[:\\s]*\\n?\\s*(.+?)\\n"
           ],
-          "required": true
+          "required": true,
+          "reference_lookup": {
+            "role": "customer"
+          }
         },
         "invoice_number": {
           "patterns": [

@@ -28,7 +28,7 @@ class IntakeHandler(FileSystemEventHandler):
         if event.is_directory:
             return
 
-        file_path = event.src_path
+        file_path = os.path.normpath(event.src_path)
 
         # Deduplicate: skip if this path was processed within the window
         with self._lock:
@@ -60,7 +60,7 @@ class IntakeHandler(FileSystemEventHandler):
             best = result.get("best_type", "none")
             self.log_callback(f"  Processed: {decision} | type={best}")
         except Exception as e:
-            self.logger.log_error(file_path, str(e))
+            # pipeline.py already logs errors before re-raising
             self.log_callback(f"  ERROR: {e}")
 
 

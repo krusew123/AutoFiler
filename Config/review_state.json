@@ -1,1 +1,22 @@
-{"files": {}}
+{
+  "files": {
+    "WKCO - Rent.pdf": {
+      "status": "in_review",
+      "added": "2026-02-18T18:21:59.967504",
+      "resolved_as": null
+    },
+    "WKCO - Sui Generis Invoice_12371895.pdf": {
+      "status": "resolved",
+      "added": "2026-02-18T18:25:20.649254",
+      "resolved_as": "invoice",
+      "resolved_at": "2026-02-18T18:25:49.932213"
+    },
+    "KF - Xtreme Energy 1-31-26.pdf": {
+      "status": "in_review",
+      "added": "2026-02-19T10:06:09.783492",
+      "resolved_as": null,
+      "review_reason": "user_assigned",
+      "phase": "A"
+    }
+  }
+}

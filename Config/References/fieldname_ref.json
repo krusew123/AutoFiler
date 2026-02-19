@@ -1,0 +1,38 @@
+{
+  "william_kruse_co_llc": {
+    "name": "William Kruse & Co LLC",
+    "aliases": [
+      "WKCO"
+    ],
+    "roles": [
+      "customer",
+      "vendor"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "stericycle_inc": {
+    "name": "Stericycle, Inc.",
+    "aliases": [],
+    "roles": [
+      "vendor"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "kruse_family_investments": {
+    "name": "Kruse Family Investments",
+    "aliases": [],
+    "roles": [
+      "customer"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  }
+}

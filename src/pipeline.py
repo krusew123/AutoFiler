@@ -8,6 +8,7 @@ from src.classifier import classify_file
 from src.scorer import score_candidates, select_best_candidate
 from src.router import route_file, move_to_review
 from src.content_matcher import extract_fields
+from src.field_resolver import resolve_fields
 from src.guards import check_file
 from src.sidecar import generate_sidecar, hash_file
 from src.staging_namer import generate_staging_name
@@ -67,6 +68,12 @@ def process_file(file_path: str, config, logger=None) -> dict:
             extracted_text = classification.get("extracted_text", "")
             extracted_fields, missing = extract_fields(
                 extracted_text, best_type, config.type_definitions
+            )
+
+            # Resolve name fields against entity reference
+            extracted_fields, missing, resolution_info = resolve_fields(
+                extracted_fields, missing, extracted_text,
+                best_type, config, logger,
             )
 
             if missing:
@@ -129,6 +136,7 @@ def process_file(file_path: str, config, logger=None) -> dict:
                     extracted_text=extracted_text,
                     sidecar_path=settings["staging_path"],
                     file_hash=file_hash,
+                    resolution_info=resolution_info,
                 )
 
         result = {

@@ -47,11 +47,20 @@ def resolve_fields(
 
         role = lookup["role"]
 
+        # Pre-filter entries by role for this field
+        if role:
+            role_filtered = {
+                k: v for k, v in reference_entries.items()
+                if role in v.get("roles", [])
+            }
+        else:
+            role_filtered = reference_entries
+
         if field_name in extracted_fields:
             # Scenario A — regex got a value
             raw_value = extracted_fields[field_name]
             matched_key, ratio = fuzzy_match(
-                raw_value, reference_entries, threshold=0.80
+                raw_value, role_filtered, threshold=0.80
             )
 
             if matched_key:
