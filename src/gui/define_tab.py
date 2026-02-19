@@ -204,7 +204,7 @@ class DefineTab(tk.Frame):
         tk.Button(route_frame, text="Opt Field", font=("Courier", 8),
                   command=lambda: self._route_selection_field(required=False)
                   ).pack(side=tk.LEFT, padx=2)
-        tk.Button(route_frame, text="Entity", font=("Courier", 8),
+        tk.Button(route_frame, text="Fieldname Ref", font=("Courier", 8),
                   command=self._route_selection_entity).pack(side=tk.LEFT, padx=2)
         self._text_entity_role = tk.StringVar(value="vendor")
         ttk.Combobox(route_frame, textvariable=self._text_entity_role, width=8,
@@ -212,78 +212,61 @@ class DefineTab(tk.Frame):
                      ).pack(side=tk.LEFT, padx=2)
 
         # --- Suggested keywords with 5-way routing ---
-        kw_list = analysis.get("suggested_keywords", [])
-        if kw_list:
-            kw_frame = tk.LabelFrame(
-                f, text=f"Suggested Keywords ({len(kw_list)})",
-                padx=4, pady=4,
-            )
-            kw_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+        kw_pool = analysis.get("suggested_keywords", [])
+        self._kw_pool = list(kw_pool)  # full ranked pool (up to 25)
+        self._kw_display_max = 15
 
-            tk.Label(
-                kw_frame,
-                text="Route each: Skip, Keyword (classification), "
-                     "Entity (reference),\nReq Field, or Opt Field "
-                     "(extraction)",
-                font=("Courier", 7), fg="gray",
-            ).pack(anchor="w", pady=(0, 4))
+        kw_frame = tk.LabelFrame(
+            f, text="Suggested Keywords", padx=4, pady=4,
+        )
+        kw_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+        self._kw_frame = kw_frame
 
-            # Build entity list for alias dropdown
-            entity_names = get_entity_names(self.config)
-            entity_choices = ["(new entity)"] + [
-                f"{key} — {name}"
-                for key, name in sorted(entity_names.items())
-            ]
+        tk.Label(
+            kw_frame,
+            text="Route: skip, keyword, fieldname ref, "
+                 "req field, opt field",
+            font=("Courier", 7), fg="gray",
+        ).pack(anchor="w", pady=(0, 4))
 
-            for kw in kw_list:
-                row_f = tk.Frame(kw_frame)
-                row_f.pack(fill=tk.X, pady=2)
+        # Container for keyword rows
+        self._kw_rows_frame = tk.Frame(kw_frame)
+        self._kw_rows_frame.pack(fill=tk.X)
 
-                # Keyword text
-                tk.Label(row_f, text=kw, font=("Courier", 8, "bold"),
-                         width=22, anchor="w").pack(side=tk.LEFT)
+        # Build entity list for alias dropdown
+        entity_names = get_entity_names(self.config)
+        self._entity_choices = ["(new entity)"] + [
+            f"{key} — {name}"
+            for key, name in sorted(entity_names.items())
+        ]
 
-                # Route dropdown
-                route_var = tk.StringVar(value="skip")
-                route_combo = ttk.Combobox(
-                    row_f, textvariable=route_var, width=10,
-                    values=["skip", "keyword", "entity",
-                            "req field", "opt field"],
-                    state="readonly",
-                )
-                route_combo.pack(side=tk.LEFT, padx=4)
+        # Populate initial top 15
+        for kw in kw_pool[:self._kw_display_max]:
+            self._add_kw_row(kw)
 
-                # Entity detail frame (role + alias target) — hidden by default
-                detail_frame = tk.Frame(row_f)
+        # Write-in entry
+        write_in_frame = tk.Frame(kw_frame)
+        write_in_frame.pack(fill=tk.X, pady=(4, 0))
+        tk.Label(write_in_frame, text="Add:",
+                 font=("Courier", 8)).pack(side=tk.LEFT)
+        self._kw_write_in = tk.StringVar()
+        tk.Entry(write_in_frame, textvariable=self._kw_write_in,
+                 width=24, font=("Courier", 8)).pack(side=tk.LEFT, padx=4)
+        tk.Button(write_in_frame, text="+", font=("Courier", 8),
+                  command=self._add_write_in_keyword).pack(side=tk.LEFT)
 
-                role_var = tk.StringVar(value="vendor")
-                ttk.Combobox(
-                    detail_frame, textvariable=role_var, width=8,
-                    values=["vendor", "customer"], state="readonly",
-                ).pack(side=tk.LEFT, padx=(0, 4))
+        # Count label
+        self._kw_count_label = tk.Label(
+            kw_frame,
+            text=f"Showing {min(len(kw_pool), self._kw_display_max)} "
+                 f"of {len(kw_pool)} ranked",
+            font=("Courier", 7), fg="gray",
+        )
+        self._kw_count_label.pack(anchor="w", pady=(4, 0))
 
-                entity_var = tk.StringVar(value="(new entity)")
-                ttk.Combobox(
-                    detail_frame, textvariable=entity_var, width=22,
-                    values=entity_choices, state="readonly",
-                ).pack(side=tk.LEFT)
-
-                # Toggle detail visibility based on route selection
-                def _on_route_change(*_args, df=detail_frame, rv=route_var):
-                    if rv.get() == "entity":
-                        df.pack(side=tk.LEFT, padx=4)
-                    else:
-                        df.pack_forget()
-
-                route_var.trace_add("write", _on_route_change)
-
-                self._kw_route_rows.append(
-                    (kw, route_var, role_var, entity_var)
-                )
-
-            tk.Button(kw_frame, text="Apply Selections",
-                      command=self._apply_keyword_selections,
-                      font=("Courier", 8)).pack(pady=(6, 0))
+        tk.Button(kw_frame, text="Apply Selections",
+                  command=self._apply_keyword_selections,
+                  font=("Courier", 8)).pack(pady=(6, 0))
 
         # --- Suggested patterns ---
         pat_list = analysis.get("suggested_patterns", [])
@@ -351,19 +334,116 @@ class DefineTab(tk.Frame):
     # Analysis → Form transfer actions
     # ------------------------------------------------------------------
 
+    def _add_kw_row(self, kw):
+        """Add a single keyword row with routing dropdown and delete button."""
+        row_f = tk.Frame(self._kw_rows_frame)
+        row_f.pack(fill=tk.X, pady=2)
+
+        # Delete button
+        del_btn = tk.Button(
+            row_f, text="\u00d7", font=("Courier", 8, "bold"), width=2,
+            fg="red",
+            command=lambda r=row_f, k=kw: self._remove_kw_row(r, k),
+        )
+        del_btn.pack(side=tk.LEFT, padx=(0, 2))
+
+        # Keyword text
+        tk.Label(row_f, text=kw, font=("Courier", 8, "bold"),
+                 width=20, anchor="w").pack(side=tk.LEFT)
+
+        # Route dropdown
+        route_var = tk.StringVar(value="skip")
+        route_combo = ttk.Combobox(
+            row_f, textvariable=route_var, width=12,
+            values=["skip", "keyword", "fieldname ref",
+                    "req field", "opt field"],
+            state="readonly",
+        )
+        route_combo.pack(side=tk.LEFT, padx=4)
+
+        # Entity detail frame (role + alias target) — hidden by default
+        detail_frame = tk.Frame(row_f)
+
+        role_var = tk.StringVar(value="vendor")
+        ttk.Combobox(
+            detail_frame, textvariable=role_var, width=8,
+            values=["vendor", "customer"], state="readonly",
+        ).pack(side=tk.LEFT, padx=(0, 4))
+
+        entity_var = tk.StringVar(value="(new entity)")
+        ttk.Combobox(
+            detail_frame, textvariable=entity_var, width=22,
+            values=self._entity_choices, state="readonly",
+        ).pack(side=tk.LEFT)
+
+        def _on_route_change(*_args, df=detail_frame, rv=route_var):
+            if rv.get() == "fieldname ref":
+                df.pack(side=tk.LEFT, padx=4)
+            else:
+                df.pack_forget()
+
+        route_var.trace_add("write", _on_route_change)
+
+        self._kw_route_rows.append(
+            (kw, route_var, role_var, entity_var, row_f)
+        )
+
+    def _remove_kw_row(self, row_frame, keyword):
+        """Delete a keyword row and backfill from pool if available."""
+        # Remove from route rows
+        self._kw_route_rows = [
+            r for r in self._kw_route_rows if r[4] is not row_frame
+        ]
+        row_frame.destroy()
+
+        # Find next keyword from pool not currently displayed
+        displayed = {r[0] for r in self._kw_route_rows}
+        for candidate in self._kw_pool:
+            if candidate not in displayed:
+                self._add_kw_row(candidate)
+                break
+
+        self._update_kw_count()
+
+    def _add_write_in_keyword(self):
+        """Add a user-typed keyword to the displayed list."""
+        kw = self._kw_write_in.get().strip()
+        if not kw:
+            return
+        # Check for duplicates
+        displayed = {r[0].lower() for r in self._kw_route_rows}
+        if kw.lower() in displayed:
+            return
+        # If at max, remove the last (lowest-ranked) row
+        if len(self._kw_route_rows) >= self._kw_display_max:
+            last = self._kw_route_rows[-1]
+            last[4].destroy()
+            self._kw_route_rows = self._kw_route_rows[:-1]
+        self._add_kw_row(kw)
+        self._kw_write_in.set("")
+        self._update_kw_count()
+
+    def _update_kw_count(self):
+        """Refresh the keyword count label."""
+        displayed = len(self._kw_route_rows)
+        pool = len(self._kw_pool)
+        self._kw_count_label.config(
+            text=f"Showing {displayed} of {pool} ranked"
+        )
+
     def _apply_keyword_selections(self):
         """Process all keyword routing selections."""
         keywords_to_add = []
         entities_to_add = []
         fields_to_add = []
 
-        for kw, route_var, role_var, entity_var in self._kw_route_rows:
+        for kw, route_var, role_var, entity_var, _frame in self._kw_route_rows:
             route = route_var.get()
             if route == "skip":
                 continue
             elif route == "keyword":
                 keywords_to_add.append(kw)
-            elif route == "entity":
+            elif route == "fieldname ref":
                 entities_to_add.append(
                     (kw, role_var.get(), entity_var.get())
                 )
@@ -409,7 +489,7 @@ class DefineTab(tk.Frame):
                 )
 
         # Reset all routes to skip
-        for _kw, route_var, _role_var, _entity_var in self._kw_route_rows:
+        for _kw, route_var, _role_var, _entity_var, _frame in self._kw_route_rows:
             route_var.set("skip")
 
     def _keyword_to_field(self, keyword):
@@ -572,12 +652,16 @@ class DefineTab(tk.Frame):
         f = self._form_frame
 
         # --- Basic fields ---
+        _hint = ("Courier", 7)  # reusable hint font
+
         row = 0
         tk.Label(f, text="Type Name:", font=("Courier", 9, "bold")).grid(
             row=row, column=0, sticky="w", padx=6, pady=3)
         self._name_var = tk.StringVar()
         tk.Entry(f, textvariable=self._name_var, width=40).grid(
             row=row, column=1, sticky="w", padx=6, pady=3)
+        tk.Label(f, text="Unique lowercase identifier",
+                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
 
         row += 1
         tk.Label(f, text="Container Formats:", font=("Courier", 9, "bold")).grid(
@@ -585,8 +669,8 @@ class DefineTab(tk.Frame):
         self._formats_var = tk.StringVar()
         tk.Entry(f, textvariable=self._formats_var, width=40).grid(
             row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="(comma-sep, e.g. .pdf,.docx)",
-                 font=("Courier", 8)).grid(row=row, column=2, sticky="w")
+        tk.Label(f, text="File extensions, e.g. .pdf,.docx",
+                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
 
         row += 1
         tk.Label(f, text="MIME Types:", font=("Courier", 9, "bold")).grid(
@@ -594,8 +678,8 @@ class DefineTab(tk.Frame):
         self._mime_var = tk.StringVar()
         tk.Entry(f, textvariable=self._mime_var, width=40).grid(
             row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="(optional, comma-sep)",
-                 font=("Courier", 8)).grid(row=row, column=2, sticky="w")
+        tk.Label(f, text="Optional byte-signature types",
+                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
 
         row += 1
         tk.Label(f, text="Content Keywords:", font=("Courier", 9, "bold")).grid(
@@ -603,8 +687,8 @@ class DefineTab(tk.Frame):
         self._keywords_text = tk.Text(f, width=40, height=4,
                                       font=("Courier", 9))
         self._keywords_text.grid(row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="(one per line)",
-                 font=("Courier", 8)).grid(row=row, column=2, sticky="nw")
+        tk.Label(f, text="One per line, drives scoring",
+                 font=_hint, fg="gray").grid(row=row, column=2, sticky="nw")
 
         row += 1
         tk.Label(f, text="Content Patterns:", font=("Courier", 9, "bold")).grid(
@@ -612,8 +696,8 @@ class DefineTab(tk.Frame):
         self._patterns_text = tk.Text(f, width=40, height=3,
                                       font=("Courier", 9))
         self._patterns_text.grid(row=row, column=1, sticky="w", padx=6, pady=3)
-        tk.Label(f, text="(one regex per line, optional)",
-                 font=("Courier", 8)).grid(row=row, column=2, sticky="nw")
+        tk.Label(f, text="One regex per line, optional",
+                 font=_hint, fg="gray").grid(row=row, column=2, sticky="nw")
 
         row += 1
         tk.Label(f, text="Keyword Threshold:", font=("Courier", 9, "bold")).grid(
@@ -621,6 +705,8 @@ class DefineTab(tk.Frame):
         self._threshold_var = tk.IntVar(value=2)
         tk.Spinbox(f, from_=1, to=20, textvariable=self._threshold_var,
                    width=5).grid(row=row, column=1, sticky="w", padx=6, pady=3)
+        tk.Label(f, text="Min keyword hits to classify",
+                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
 
         row += 1
         tk.Label(f, text="Destination Subfolder:", font=("Courier", 9, "bold")).grid(
@@ -628,6 +714,8 @@ class DefineTab(tk.Frame):
         self._dest_var = tk.StringVar()
         tk.Entry(f, textvariable=self._dest_var, width=40).grid(
             row=row, column=1, sticky="w", padx=6, pady=3)
+        tk.Label(f, text="Staging subdirectory path",
+                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
 
         row += 1
         tk.Label(f, text="Naming Pattern:", font=("Courier", 9, "bold")).grid(
@@ -635,6 +723,8 @@ class DefineTab(tk.Frame):
         self._naming_var = tk.StringVar(value="{original_name}_{date}")
         tk.Entry(f, textvariable=self._naming_var, width=40).grid(
             row=row, column=1, sticky="w", padx=6, pady=3)
+        tk.Label(f, text="Template using {field_name} tokens",
+                 font=_hint, fg="gray").grid(row=row, column=2, sticky="w")
 
         # --- Extraction Fields section ---
         row += 1
@@ -645,7 +735,10 @@ class DefineTab(tk.Frame):
         row += 1
         tk.Label(f, text="Extraction Fields",
                  font=("Courier", 10, "bold")).grid(
-            row=row, column=0, columnspan=2, sticky="w", padx=6, pady=3)
+            row=row, column=0, sticky="w", padx=6, pady=3)
+        tk.Label(f, text="Regex fields to extract from text",
+                 font=_hint, fg="gray").grid(
+            row=row, column=1, sticky="w", padx=6)
 
         row += 1
         self._fields_container = tk.Frame(f)
@@ -665,7 +758,20 @@ class DefineTab(tk.Frame):
         row += 1
         tk.Label(f, text="Staging Field Mapping",
                  font=("Courier", 10, "bold")).grid(
-            row=row, column=0, columnspan=2, sticky="w", padx=6, pady=3)
+            row=row, column=0, sticky="w", padx=6, pady=3)
+        tk.Label(f, text="Maps fields to coded filename slots",
+                 font=_hint, fg="gray").grid(
+            row=row, column=1, sticky="w", padx=6)
+
+        row += 1
+        tk.Label(
+            f,
+            text="Optional: assign extraction fields to staging "
+                 "filename slots.\nLeave empty for slots that "
+                 "don't apply to this type.",
+            font=_hint, fg="gray", justify="left",
+        ).grid(row=row, column=0, columnspan=3, sticky="w",
+               padx=6, pady=(0, 4))
 
         self._staging_vars = {}
         for slot in _STAGING_SLOTS:
@@ -922,5 +1028,7 @@ class DefineTab(tk.Frame):
         self._extracted_text = None
         self._doc_analysis = None
         self._text_preview = None
+        self._kw_pool = []
+        self._kw_route_rows = []
         self._context_frame.pack_forget()
         self._hide_analysis_pane()

@@ -241,9 +241,9 @@ def _suggest_keywords(
             continue
         filtered[phrase] = count
 
-    # Sort by frequency, return top 15
+    # Sort by frequency, return top 25 (UI shows 15, keeps rest as backfill)
     ranked = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
-    return [phrase for phrase, _ in ranked[:15]]
+    return [phrase for phrase, _ in ranked[:25]]
 
 
 def _suggest_patterns(text: str, existing_patterns: list[str]) -> list[str]:
