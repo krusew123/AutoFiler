@@ -1,10 +1,11 @@
 # src/config_learner.py
-"""Persist user-approved learning to type_definitions.json."""
+"""Persist user-approved learning to type_definitions.json and fieldname_ref.json."""
 
 import json
 import pathlib
 import re
 import threading
+from datetime import date
 
 
 _config_lock = threading.Lock()
@@ -150,3 +151,85 @@ def add_extraction_field(
         return td
 
     _read_modify_write(config, mutator)
+
+
+# ------------------------------------------------------------------
+# Entity reference operations (fieldname_ref.json)
+# ------------------------------------------------------------------
+
+REF_PATH = "References/fieldname_ref.json"
+
+
+def _generate_entity_key(name: str) -> str:
+    """Slugify a name to a reference key."""
+    slug = name.lower()
+    slug = re.sub(r"[^a-z0-9]+", "_", slug)
+    slug = slug.strip("_")
+    return slug
+
+
+def add_entity_reference(
+    name: str,
+    role: str,
+    config,
+    doc_type_code: str = "000",
+) -> str:
+    """
+    Create a new entity in fieldname_ref.json.
+
+    Returns the entity key that was created.
+    """
+    with _config_lock:
+        entries = config.load_reference(REF_PATH)
+
+        base_key = _generate_entity_key(name)
+        entity_key = base_key
+        suffix = 2
+        while entity_key in entries:
+            entity_key = f"{base_key}_{suffix}"
+            suffix += 1
+
+        entries[entity_key] = {
+            "name": name,
+            "aliases": [],
+            "roles": [role],
+            "doc_types": [doc_type_code],
+            "date_added": date.today().isoformat(),
+        }
+
+        config.save_reference(REF_PATH, entries)
+    return entity_key
+
+
+def add_alias_to_entity(
+    entity_key: str,
+    alias: str,
+    config,
+) -> bool:
+    """
+    Add an alias to an existing entity in fieldname_ref.json.
+
+    Returns True if the alias was added, False if already present or
+    entity not found.
+    """
+    with _config_lock:
+        entries = config.load_reference(REF_PATH)
+        entity = entries.get(entity_key)
+        if not entity:
+            return False
+
+        existing = [a.lower() for a in entity.get("aliases", [])]
+        if alias.lower() in existing or alias.lower() == entity["name"].lower():
+            return False
+
+        entity.setdefault("aliases", []).append(alias)
+        config.save_reference(REF_PATH, entries)
+    return True
+
+
+def get_entity_names(config) -> dict:
+    """
+    Return {entity_key: display_name} for all entities in fieldname_ref.json.
+    """
+    entries = config.load_reference(REF_PATH)
+    return {key: entry.get("name", key) for key, entry in entries.items()}

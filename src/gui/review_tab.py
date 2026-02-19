@@ -19,6 +19,9 @@ from src.config_learner import (
     add_keywords_to_type,
     add_patterns_to_type,
     add_extraction_patterns,
+    add_entity_reference,
+    add_alias_to_entity,
+    get_entity_names,
 )
 
 
@@ -66,6 +69,7 @@ class ReviewTab(tk.Frame):
             "keywords_added": [],
             "patterns_added": [],
             "extraction_patterns_added": {},
+            "entities_added": [],
         }
 
         # Paused context for Define tab handoff
@@ -198,6 +202,7 @@ class ReviewTab(tk.Frame):
             "keywords_added": [],
             "patterns_added": [],
             "extraction_patterns_added": {},
+            "entities_added": [],
         }
 
     # ------------------------------------------------------------------
@@ -348,7 +353,7 @@ class ReviewTab(tk.Frame):
         self._show_learning_a()
 
     # ------------------------------------------------------------------
-    # LEARNING_A — Approve keyword/pattern suggestions
+    # LEARNING_A — Approve keyword/pattern suggestions with 3-way routing
     # ------------------------------------------------------------------
 
     def _show_learning_a(self):
@@ -378,20 +383,81 @@ class ReviewTab(tk.Frame):
         canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(8, 0), pady=4)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 8), pady=4)
 
-        self._kw_check_vars = []
+        # Build entity list for alias dropdown
+        entity_names = get_entity_names(self.config)
+        entity_choices = ["(new entity)"] + [
+            f"{key} — {name}" for key, name in sorted(entity_names.items())
+        ]
+
+        # Get doc type code for the assigned type
+        type_cfg = self.config.type_definitions.get("types", {}).get(
+            self._assigned_type, {}
+        )
+        self._assigned_type_code = type_cfg.get("code", "000")
+
+        self._kw_route_rows = []  # [(phrase, route_var, role_var, entity_var)]
         self._pat_check_vars = []
 
-        # Suggested keywords
+        # Suggested keywords — 3-way routing per suggestion
         if gap.get("suggested_keywords"):
             tk.Label(scroll_frame, text="Suggested Keywords:",
                      font=("Courier", 9, "bold")).pack(anchor="w", pady=(4, 2))
-            for kw in gap["suggested_keywords"]:
-                var = tk.BooleanVar(value=True)
-                tk.Checkbutton(scroll_frame, text=kw, variable=var,
-                               font=("Courier", 9)).pack(anchor="w", padx=12)
-                self._kw_check_vars.append((kw, var))
+            tk.Label(scroll_frame,
+                     text="  For each, choose: Keyword (classification signal), "
+                          "Entity (add to reference), or Skip",
+                     font=("Courier", 8), fg="gray").pack(anchor="w", padx=8)
 
-        # Suggested patterns
+            for kw in gap["suggested_keywords"]:
+                row_frame = tk.Frame(scroll_frame)
+                row_frame.pack(fill=tk.X, padx=12, pady=2)
+
+                # The phrase
+                tk.Label(row_frame, text=kw, font=("Courier", 9, "bold"),
+                         width=24, anchor="w").pack(side=tk.LEFT)
+
+                # 3-way radio: skip / keyword / entity
+                route_var = tk.StringVar(value="skip")
+                tk.Radiobutton(row_frame, text="Skip", variable=route_var,
+                               value="skip", font=("Courier", 8)).pack(
+                    side=tk.LEFT, padx=(4, 0))
+                tk.Radiobutton(row_frame, text="Keyword", variable=route_var,
+                               value="keyword", font=("Courier", 8)).pack(
+                    side=tk.LEFT, padx=(4, 0))
+                tk.Radiobutton(row_frame, text="Entity", variable=route_var,
+                               value="entity", font=("Courier", 8)).pack(
+                    side=tk.LEFT, padx=(4, 0))
+
+                # Entity details (role + new/alias) — visible inline
+                detail_frame = tk.Frame(row_frame)
+                detail_frame.pack(side=tk.LEFT, padx=(8, 0))
+
+                role_var = tk.StringVar(value="vendor")
+                role_combo = ttk.Combobox(
+                    detail_frame, textvariable=role_var, width=8,
+                    values=["vendor", "customer"], state="readonly",
+                )
+                role_combo.pack(side=tk.LEFT, padx=(0, 4))
+
+                entity_var = tk.StringVar(value="(new entity)")
+                entity_combo = ttk.Combobox(
+                    detail_frame, textvariable=entity_var, width=28,
+                    values=entity_choices, state="readonly",
+                )
+                entity_combo.pack(side=tk.LEFT)
+
+                # Only show detail_frame when "entity" is selected
+                def _toggle_detail(detail=detail_frame, var=route_var):
+                    if var.get() == "entity":
+                        detail.pack(side=tk.LEFT, padx=(8, 0))
+                    else:
+                        detail.pack_forget()
+
+                route_var.trace_add("write", lambda *_, cb=_toggle_detail: cb())
+                detail_frame.pack_forget()  # hidden by default (skip)
+
+                self._kw_route_rows.append((kw, route_var, role_var, entity_var))
+
+        # Suggested patterns — simple checkboxes (these are always classification signals)
         if gap.get("suggested_patterns"):
             tk.Label(scroll_frame, text="Suggested Patterns:",
                      font=("Courier", 9, "bold")).pack(anchor="w", pady=(8, 2))
@@ -414,8 +480,40 @@ class ReviewTab(tk.Frame):
                   command=self._skip_learning_a).pack(side=tk.LEFT, padx=4)
 
     def _apply_learning_a(self):
-        # Gather approved keywords
-        approved_kw = [kw for kw, var in self._kw_check_vars if var.get()]
+        approved_kw = []
+        entities_added = []
+
+        for phrase, route_var, role_var, entity_var in self._kw_route_rows:
+            route = route_var.get()
+            if route == "keyword":
+                approved_kw.append(phrase)
+            elif route == "entity":
+                role = role_var.get()
+                entity_choice = entity_var.get()
+                if entity_choice == "(new entity)":
+                    key = add_entity_reference(
+                        phrase, role, self.config,
+                        doc_type_code=self._assigned_type_code,
+                    )
+                    entities_added.append(
+                        {"name": phrase, "action": "new", "key": key, "role": role}
+                    )
+                    if self.af_logger:
+                        self.af_logger.log_reference_entry(
+                            role, phrase,
+                            {"name": phrase, "key": key, "role": role},
+                        )
+                else:
+                    # Parse "key — name" format
+                    entity_key = entity_choice.split(" — ")[0].strip()
+                    added = add_alias_to_entity(entity_key, phrase, self.config)
+                    if added:
+                        entities_added.append(
+                            {"name": phrase, "action": "alias",
+                             "key": entity_key, "role": role}
+                        )
+
+        # Approved patterns (always classification signals)
         approved_pat = [pat for pat, var in self._pat_check_vars if var.get()]
 
         if approved_kw:
@@ -430,7 +528,9 @@ class ReviewTab(tk.Frame):
             )
             self._learning_record["patterns_added"] = approved_pat[:count] if count else []
 
-        if approved_kw or approved_pat:
+        self._learning_record["entities_added"] = entities_added
+
+        if approved_kw or approved_pat or entities_added:
             self.af_logger.log_learning_event(
                 self._current_file,
                 self._assigned_type,
@@ -808,6 +908,11 @@ class ReviewTab(tk.Frame):
             count = sum(len(v) for v in self._learning_record["extraction_patterns_added"].values())
             tk.Label(f, text=f"Extraction patterns added: {count}",
                      font=("Courier", 9)).pack(anchor="w", padx=8, pady=2)
+        if self._learning_record.get("entities_added"):
+            for ent in self._learning_record["entities_added"]:
+                action = "New entity" if ent["action"] == "new" else f"Alias for {ent['key']}"
+                tk.Label(f, text=f"Entity: {ent['name']} ({action}, role={ent['role']})",
+                         font=("Courier", 9)).pack(anchor="w", padx=8, pady=2)
 
         tk.Button(f, text="Next File", command=self._next_file).pack(
             padx=8, pady=16, anchor="w")
