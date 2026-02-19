@@ -1,6 +1,7 @@
 # src/gui/intake_tab.py
 """Intake watcher tab — extracted from autofiler_gui.py."""
 
+import os
 import tkinter as tk
 from tkinter import scrolledtext
 import threading
@@ -8,6 +9,9 @@ import time
 from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from src.pipeline import process_file
+
+# Minimum seconds between processing the same file path
+_DEDUP_WINDOW = 5
 
 
 class IntakeHandler(FileSystemEventHandler):
@@ -17,20 +21,46 @@ class IntakeHandler(FileSystemEventHandler):
         self.config = config
         self.logger = logger
         self.log_callback = log_callback
+        self._recently_processed: dict[str, float] = {}
+        self._lock = threading.Lock()
 
     def on_created(self, event):
         if event.is_directory:
             return
-        self.log_callback(f"Detected: {event.src_path}")
+
+        file_path = event.src_path
+
+        # Deduplicate: skip if this path was processed within the window
+        with self._lock:
+            now = time.monotonic()
+            last = self._recently_processed.get(file_path, 0)
+            if now - last < _DEDUP_WINDOW:
+                return
+            self._recently_processed[file_path] = now
+
+            # Prune old entries
+            cutoff = now - _DEDUP_WINDOW * 2
+            self._recently_processed = {
+                k: v for k, v in self._recently_processed.items()
+                if v > cutoff
+            }
+
+        self.log_callback(f"Detected: {file_path}")
         time.sleep(1)
+
+        # Verify the file still exists (may have been moved by a prior event)
+        if not os.path.isfile(file_path):
+            self.log_callback(f"  Skipped (already moved): {file_path}")
+            return
+
         try:
             self.config.reload()
-            result = process_file(event.src_path, self.config, self.logger)
+            result = process_file(file_path, self.config, self.logger)
             decision = result.get("routing", {}).get("decision", "unknown")
             best = result.get("best_type", "none")
             self.log_callback(f"  Processed: {decision} | type={best}")
         except Exception as e:
-            self.logger.log_error(event.src_path, str(e))
+            self.logger.log_error(file_path, str(e))
             self.log_callback(f"  ERROR: {e}")
 
 
