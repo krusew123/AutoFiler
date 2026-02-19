@@ -76,6 +76,27 @@ class ReviewQueue:
             self._state["files"][name]["resolved_at"] = datetime.now().isoformat()
             self._save_state()
 
+    def set_review_reason(self, file_path: str, reason: str, phase: str = "A"):
+        """Store the review reason and current phase for a file."""
+        name = pathlib.Path(file_path).name
+        if name in self._state["files"]:
+            self._state["files"][name]["review_reason"] = reason
+            self._state["files"][name]["phase"] = phase
+            self._save_state()
+
+    def mark_phase_b(self, file_path: str, reason: str):
+        """Transition a file to Phase B (extraction review)."""
+        name = pathlib.Path(file_path).name
+        if name in self._state["files"]:
+            self._state["files"][name]["phase"] = "B"
+            self._state["files"][name]["phase_b_reason"] = reason
+            self._save_state()
+
+    def get_file_info(self, file_path: str) -> dict | None:
+        """Return the state entry for a file, or None if not tracked."""
+        name = pathlib.Path(file_path).name
+        return self._state["files"].get(name)
+
     def summary(self) -> dict:
         """Return counts by status."""
         counts = {"pending": 0, "in_review": 0, "resolved": 0}

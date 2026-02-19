@@ -28,6 +28,8 @@ def generate_sidecar(
     extracted_text: str,
     sidecar_path: str,
     file_hash: str,
+    resolution_info: dict | None = None,
+    review_info: dict | None = None,
 ) -> str:
     """
     Write a JSON sidecar file alongside a staged document.
@@ -55,7 +57,7 @@ def generate_sidecar(
     sidecar_file = sidecar_dir / f"{staging_stem}.json"
 
     sidecar_data = {
-        "schema_version": "1.1",
+        "schema_version": "1.2",
         "processing_timestamp": datetime.now().isoformat(),
         "source_file": source_file_path,
         "source_hash": file_hash,
@@ -66,8 +68,12 @@ def generate_sidecar(
         "extracted_fields": extracted_fields or {},
         "modified_fields": modified_fields,
         "staging_filename": staging_stem,
+        "resolution_info": resolution_info or {},
         "ocr_text": extracted_text,
     }
+
+    if review_info is not None:
+        sidecar_data["review_info"] = review_info
 
     sidecar_file.write_text(
         json.dumps(sidecar_data, indent=2, ensure_ascii=False) + "\n",
