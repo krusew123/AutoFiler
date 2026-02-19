@@ -44,6 +44,9 @@ class DefineTab(tk.Frame):
         self._extracted_text = None
         self._doc_analysis = None
 
+        # Text preview widget reference
+        self._text_preview = None
+
         # Dynamic extraction field rows
         self._field_rows = []
 
@@ -163,14 +166,50 @@ class DefineTab(tk.Frame):
         if not analysis:
             return
 
-        # --- Extracted text preview ---
-        text_frame = tk.LabelFrame(f, text="Extracted Text", padx=4, pady=4)
+        # --- Extracted text preview (selectable, read-only) ---
+        text_frame = tk.LabelFrame(f, text="Extracted Text  (select text → route below)",
+                                   padx=4, pady=4)
         text_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
         preview = tk.Text(text_frame, height=10, width=44, font=("Courier", 8),
                           wrap=tk.WORD)
         preview.insert("1.0", (self._extracted_text or "")[:5000])
-        preview.config(state=tk.DISABLED)
+        # Allow selection and copy but block all edits
+        _nav = {"Left", "Right", "Up", "Down", "Home", "End",
+                "Prior", "Next", "Shift_L", "Shift_R", "Control_L", "Control_R"}
+        def _readonly_key(e, nav=_nav):
+            if e.keysym in nav:
+                return None  # allow navigation
+            if (e.state & 0x4) and e.keysym.lower() in ("a", "c"):
+                return None  # allow Ctrl+A, Ctrl+C
+            if (e.state & 0x1) and e.keysym in (
+                "Left", "Right", "Up", "Down", "Home", "End",
+            ):
+                return None  # allow Shift+nav for selection
+            return "break"
+        preview.bind("<Key>", _readonly_key)
         preview.pack(fill=tk.X)
+        self._text_preview = preview
+
+        # --- Text routing buttons ---
+        route_frame = tk.Frame(text_frame)
+        route_frame.pack(fill=tk.X, pady=(4, 0))
+
+        tk.Label(route_frame, text="Route selection →",
+                 font=("Courier", 8), fg="gray").pack(side=tk.LEFT, padx=(0, 4))
+        tk.Button(route_frame, text="Keyword", font=("Courier", 8),
+                  command=self._route_selection_keyword).pack(side=tk.LEFT, padx=2)
+        tk.Button(route_frame, text="Req Field", font=("Courier", 8),
+                  command=lambda: self._route_selection_field(required=True)
+                  ).pack(side=tk.LEFT, padx=2)
+        tk.Button(route_frame, text="Opt Field", font=("Courier", 8),
+                  command=lambda: self._route_selection_field(required=False)
+                  ).pack(side=tk.LEFT, padx=2)
+        tk.Button(route_frame, text="Entity", font=("Courier", 8),
+                  command=self._route_selection_entity).pack(side=tk.LEFT, padx=2)
+        self._text_entity_role = tk.StringVar(value="vendor")
+        ttk.Combobox(route_frame, textvariable=self._text_entity_role, width=8,
+                     values=["vendor", "customer"], state="readonly"
+                     ).pack(side=tk.LEFT, padx=2)
 
         # --- Suggested keywords with 5-way routing ---
         kw_list = analysis.get("suggested_keywords", [])
@@ -444,6 +483,63 @@ class DefineTab(tk.Frame):
             required=required,
             ref_role=ref_role,
         )
+
+    # ------------------------------------------------------------------
+    # Text selection routing
+    # ------------------------------------------------------------------
+
+    def _get_text_selection(self) -> str | None:
+        """Return the currently selected text from the preview, or None."""
+        if not self._text_preview:
+            return None
+        try:
+            return self._text_preview.get(tk.SEL_FIRST, tk.SEL_LAST).strip()
+        except tk.TclError:
+            return None
+
+    def _route_selection_keyword(self):
+        """Add selected text to the Content Keywords text box."""
+        sel = self._get_text_selection()
+        if not sel:
+            return
+        existing = self._keywords_text.get("1.0", "end").strip()
+        existing_set = {
+            line.strip().lower()
+            for line in existing.splitlines() if line.strip()
+        }
+        if sel.lower() not in existing_set:
+            if existing:
+                self._keywords_text.insert("end", "\n")
+            self._keywords_text.insert("end", sel)
+
+    def _route_selection_field(self, required=True):
+        """Convert selected text to an extraction field row."""
+        sel = self._get_text_selection()
+        if not sel:
+            return
+        field_name, pattern, ref_role = self._keyword_to_field(sel)
+        # Avoid duplicates
+        if any(r["name"].get() == field_name for r in self._field_rows):
+            return
+        self._add_field_row(
+            name=field_name, patterns=pattern,
+            required=required, ref_role=ref_role,
+        )
+
+    def _route_selection_entity(self):
+        """Add selected text as a new entity in fieldname_ref.json."""
+        sel = self._get_text_selection()
+        if not sel:
+            return
+        role = self._text_entity_role.get()
+        try:
+            add_entity_reference(sel, role, self.config)
+            messagebox.showinfo(
+                "Entity Added",
+                f"Added '{sel}' as {role} to fieldname reference.",
+            )
+        except Exception as e:
+            messagebox.showerror("Entity Error", str(e))
 
     # ------------------------------------------------------------------
     # Form pane (right side)
@@ -825,5 +921,6 @@ class DefineTab(tk.Frame):
         self._return_file_path = None
         self._extracted_text = None
         self._doc_analysis = None
+        self._text_preview = None
         self._context_frame.pack_forget()
         self._hide_analysis_pane()
