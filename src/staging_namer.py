@@ -86,10 +86,16 @@ def generate_staging_name(
     staging_map = type_config.get("staging_fields", {})
 
     def _resolve(slot: str) -> str:
-        field_name = staging_map.get(slot)
-        if not field_name:
+        mapping = staging_map.get(slot)
+        if not mapping:
             return ""
-        return (extracted_fields or {}).get(field_name, "") or ""
+        # Support both a single field name and an ordered fallback list
+        field_names = mapping if isinstance(mapping, list) else [mapping]
+        for field_name in field_names:
+            value = (extracted_fields or {}).get(field_name, "") or ""
+            if value:
+                return value
+        return ""
 
     raw_vendor = _resolve("vendor")
     raw_customer = _resolve("customer")

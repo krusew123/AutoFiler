@@ -10,6 +10,172 @@
       "destination_subfolder": "",
       "naming_pattern": "{original_name}",
       "staging_fields": {}
+    },
+    "invoice": {
+      "code": "001",
+      "container_formats": [".pdf", ".docx"],
+      "mime_types": [
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      ],
+      "content_keywords": [
+        "Invoice", "Bill To", "Amount Due",
+        "Payment Terms", "Invoice Number", "Invoice Date",
+        "Invoice No", "Grand Total", "Total Due",
+        "Prepared For", "Remit To"
+      ],
+      "content_patterns": [
+        "Invoice\\s*#",
+        "Invoice\\s+No\\.?\\s*[:\\s]",
+        "Invoice\\s+Number",
+        "Invoice\\s+Date",
+        "Total\\s+Due",
+        "Grand\\s+Total",
+        "Amount\\s+Due"
+      ],
+      "keyword_threshold": 2,
+      "destination_subfolder": "Accounting\\Vendors\\{vendor_name}",
+      "naming_pattern": "{invoice_number} - {customer_name} - {invoice_date}",
+      "staging_fields": {
+        "vendor": "vendor_name",
+        "customer": "customer_name",
+        "date": "invoice_date",
+        "reference": "invoice_number",
+        "amount": ["total_amount", "balance_due"]
+      },
+      "extraction_fields": {
+        "vendor_name": {
+          "patterns": [
+            "^(?:From|Sender|Vendor|Sold\\s*By)\\s*:\\s*(.+?)$",
+            "^(.+?,\\s*(?:Inc|LLC|Corp|Ltd|Company|LP|LLP)\\.?)\\s*$"
+          ],
+          "required": true
+        },
+        "customer_name": {
+          "patterns": [
+            "Customer\\s+Name[:\\s]+(.+?)\\n",
+            "Bill\\s*To[:\\s]*\\n\\s*(.+?)\\n",
+            "Prepared\\s+For\\b.*\\n\\s*(.+?)(?:\\s+\\d|\\n)",
+            "(?:Sold\\s*To|Ship\\s*To)[:\\s]*\\n?\\s*(.+?)\\n"
+          ],
+          "required": true
+        },
+        "invoice_number": {
+          "patterns": [
+            "Invoice\\s*#[:\\s]*([A-Za-z0-9\\-]+)",
+            "Invoice\\s+Number[:\\s]*([A-Za-z0-9\\-]+)",
+            "Invoice\\s+No\\.?[:\\s]+([A-Za-z0-9\\-]+)"
+          ],
+          "required": true
+        },
+        "invoice_date": {
+          "patterns": [
+            "Invoice\\s+Date[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})",
+            "Date\\s+of\\s+Invoice[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})",
+            "Date[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})"
+          ],
+          "required": true
+        },
+        "customer_id": {
+          "patterns": [
+            "(?:Customer|Client)\\s*(?:#|No\\.?|Number|ID)[:\\s]*(\\S+)",
+            "(?:Account|Acct)\\.?\\s*(?:#|No\\.?|Number|ID)[:\\s]*(\\S+)"
+          ],
+          "required": false
+        },
+        "due_date": {
+          "patterns": [
+            "Due\\s+Date[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})",
+            "Payment\\s+Due[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})",
+            "Date\\s+Due[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})"
+          ],
+          "required": false
+        },
+        "po_number": {
+          "patterns": [
+            "P\\.?O\\.?\\s*(?:#|No\\.?|Number)[:\\s]*([A-Za-z0-9\\-]+)",
+            "Purchase\\s+Order[:\\s]*([A-Za-z0-9\\-]+)"
+          ],
+          "required": false
+        },
+        "qty": {
+          "patterns": [
+            "(?:Qty|Quantity)[:\\s]*(\\d+(?:\\.\\d+)?)",
+            "(?:Units|Count)[:\\s]*(\\d+(?:\\.\\d+)?)"
+          ],
+          "required": false
+        },
+        "rate": {
+          "patterns": [
+            "(?:Rate|Price|Unit\\s+Price)[:\\s]*\\$?([\\d,]+\\.?\\d*)",
+            "(?:Cost\\s+Per|Per\\s+Unit)[:\\s]*\\$?([\\d,]+\\.?\\d*)"
+          ],
+          "required": false
+        },
+        "total_amount": {
+          "patterns": [
+            "Total\\s+Due[:\\s]*\\$?([\\d,]+\\.?\\d*)",
+            "Grand\\s+Total[:\\s]*\\$?([\\d,]+\\.?\\d*)",
+            "Amount\\s+Due[:\\s]*\\$?([\\d,]+\\.?\\d*)",
+            "Total\\s+Amount[:\\s]*\\$?([\\d,]+\\.?\\d*)"
+          ],
+          "required": false
+        },
+        "balance_due": {
+          "patterns": [
+            "Balance\\s+Due[:\\s]*\\$?([\\d,]+\\.?\\d*)",
+            "(?:Amount|Balance)\\s+(?:Owing|Outstanding)[:\\s]*\\$?([\\d,]+\\.?\\d*)"
+          ],
+          "required": false
+        },
+        "remit_to_name": {
+          "patterns": [
+            "(?:Remit|Pay)\\s*To[:\\s]*\\n?\\s*(.+?)\\n",
+            "Make\\s+(?:Check|Payment)\\s+(?:Payable|Out)\\s+To[:\\s]*(.+?)\\n"
+          ],
+          "required": false
+        },
+        "remit_to_address": {
+          "patterns": [
+            "(?:Remit|Pay)\\s*To[:\\s]*\\n.+\\n\\s*(\\d+\\s+.+(?:St|Street|Ave|Avenue|Blvd|Dr|Drive|Rd|Road|Ln|Way|Ct|Pl)\\.?[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?)",
+            "(?:Remit|Pay)\\s*To[:\\s]*\\n.+\\n\\s*((?:P\\.?\\s*O\\.?\\s*Box\\s+\\d+)[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?)"
+          ],
+          "required": false
+        },
+        "ach_routing": {
+          "patterns": [
+            "(?:Routing|ABA|RTN)\\s*(?:#|No\\.?|Number)?[:\\s]*(\\d{9})"
+          ],
+          "required": false
+        },
+        "ach_account": {
+          "patterns": [
+            "(?:Account)\\s*(?:#|No\\.?|Number)?[:\\s]*(\\d{6,17})"
+          ],
+          "required": false
+        },
+        "address": {
+          "patterns": [
+            "(\\d+\\s+[A-Za-z].+(?:St|Street|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Rd|Road|Ln|Lane|Way|Ct|Court|Pl|Place)\\.?[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?)",
+            "((?:P\\.?\\s*O\\.?\\s*Box\\s+\\d+)[,\\s]+[A-Za-z\\s]+,?\\s*[A-Z]{2}\\s+\\d{5}(?:-\\d{4})?)"
+          ],
+          "required": false
+        },
+        "phone": {
+          "patterns": [
+            "(?:Phone|Tel|Fax|Call)[:\\s]*(1?[\\s.-]?\\(?\\d{3}\\)?[\\s.-]?\\d{3}[\\s.-]?\\d{4})",
+            "(\\(?\\d{3}\\)?[\\s.-]\\d{3}[\\s.-]\\d{4})"
+          ],
+          "required": false
+        },
+        "tax_id": {
+          "patterns": [
+            "(?:Tax\\s*ID|TIN|EIN)[:\\s]*(\\d{2}-\\d{7})",
+            "(?:Federal\\s+ID|FEIN)[:\\s]*(\\d{2}-\\d{7})"
+          ],
+          "required": false
+        }
+      }
     }
   }
 }
