@@ -5,8 +5,7 @@
       "WKCO"
     ],
     "roles": [
-      "customer",
-      "vendor"
+      "customer"
     ],
     "doc_types": [
       "001"
@@ -26,6 +25,83 @@
   },
   "kruse_family_investments": {
     "name": "Kruse Family Investments",
+    "aliases": [],
+    "roles": [
+      "customer"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "william_kruse": {
+    "name": "William Kruse",
+    "aliases": [],
+    "roles": [
+      "customer"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "vcre_property_management_dfw_llc": {
+    "name": "VCRE Property Management DFW, LLC",
+    "aliases": [],
+    "roles": [
+      "vendor"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "tyler_kruse": {
+    "name": "Tyler Kruse",
+    "aliases": [],
+    "roles": [
+      "customer"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "sui_generis_incorporated": {
+    "name": "Sui Generis Incorporated",
+    "aliases": [],
+    "roles": [
+      "vendor"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "xtreme_energy": {
+    "name": "XTREME ENERGY",
+    "aliases": [],
+    "roles": [
+      "vendor"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "xtreme_energy_company": {
+    "name": "XTREME ENERGY COMPANY",
+    "aliases": [],
+    "roles": [
+      "vendor"
+    ],
+    "doc_types": [
+      "001"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "kruse_farms_lp": {
+    "name": "KRUSE FARMS LP",
     "aliases": [],
     "roles": [
       "customer"

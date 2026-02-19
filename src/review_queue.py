@@ -32,18 +32,30 @@ class ReviewQueue:
 
     def scan(self) -> list[str]:
         """
-        Scan the review folder and register any new files as pending.
+        Scan the review folder and register/reset files as pending.
+
+        - New files (not in state) are registered as pending.
+        - Files with stale status (resolved or in_review) that are still
+          physically present in the review folder are reset to pending,
+          since they were re-routed to review or their review was interrupted.
+
         Returns the list of pending file paths sorted by modified time.
         """
+        present = set()
         for item in self._review_dir.iterdir():
             if item.is_file():
                 key = item.name
+                present.add(key)
                 if key not in self._state["files"]:
                     self._state["files"][key] = {
                         "status": "pending",
                         "added": datetime.now().isoformat(),
                         "resolved_as": None,
                     }
+                elif self._state["files"][key]["status"] in ("resolved", "in_review"):
+                    # File is back in review — reset to pending
+                    self._state["files"][key]["status"] = "pending"
+                    self._state["files"][key]["resolved_as"] = None
         self._save_state()
         return self.pending()
 

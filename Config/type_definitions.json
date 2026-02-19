@@ -13,16 +13,30 @@
     },
     "invoice": {
       "code": "001",
-      "container_formats": [".pdf", ".docx"],
+      "container_formats": [
+        ".pdf",
+        ".docx"
+      ],
       "mime_types": [
         "application/pdf",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
       ],
       "content_keywords": [
-        "Invoice", "Bill To", "Amount Due",
-        "Payment Terms", "Invoice Number", "Invoice Date",
-        "Invoice No", "Grand Total", "Total Due",
-        "Prepared For", "Remit To"
+        "Invoice",
+        "Bill To",
+        "Amount Due",
+        "Payment Terms",
+        "Invoice Number",
+        "Invoice Date",
+        "Invoice No",
+        "Grand Total",
+        "Total Due",
+        "Prepared For",
+        "Remit To",
+        "Billing Information",
+        "Payment Amount",
+        "BALANCE FORWARD",
+        "VENDOR REFERENCE DATE"
       ],
       "content_patterns": [
         "Invoice\\s*#",
@@ -31,7 +45,11 @@
         "Invoice\\s+Date",
         "Total\\s+Due",
         "Grand\\s+Total",
-        "Amount\\s+Due"
+        "Amount\\s+Due",
+        "\\d{1,2}/\\d{1,2}/\\d{2,4}",
+        "\\$[\\d,]+\\.\\d{2}",
+        "\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}",
+        "[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}"
       ],
       "keyword_threshold": 2,
       "destination_subfolder": "Accounting\\Vendors\\{vendor_name}",
@@ -41,7 +59,10 @@
         "customer": "customer_name",
         "date": "invoice_date",
         "reference": "invoice_number",
-        "amount": ["total_amount", "balance_due"]
+        "amount": [
+          "total_amount",
+          "balance_due"
+        ]
       },
       "extraction_fields": {
         "vendor_name": {
@@ -70,7 +91,17 @@
           "patterns": [
             "Invoice\\s*#[:\\s]*([A-Za-z0-9\\-]+)",
             "Invoice\\s+Number[:\\s]*([A-Za-z0-9\\-]+)",
-            "Invoice\\s+No\\.?[:\\s]+([A-Za-z0-9\\-]+)"
+            "Invoice\\s+No\\.?[:\\s]+([A-Za-z0-9\\-]+)",
+            "P\\.O\\.\\ BOX\\s*([A-Z]{0,5}[-#]?\\d{3,})",
+            "P\\.O\\.\\ BOX\\s*(\\d{4,})",
+            "HOUSTON\\ TX\\s*([A-Z]{0,5}[-#]?\\d{3,})",
+            "HOUSTON\\ TX\\s*(\\d{4,})",
+            "361/\\s*([A-Z]{0,5}[-#]?\\d{3,})",
+            "361/\\s*(\\d{4,})",
+            "KRUSE\\ FARMS\\ LP\\ STMTNO\\s*([A-Z]{0,5}[-#]?\\d{3,})",
+            "KRUSE\\ FARMS\\ LP\\ STMTNO\\ JIB\\s*(\\d{4,})",
+            "\\ S\\ MAIN\\ STREET\\ STMTDATE\\ 01/31/\\s*([A-Z]{0,5}[-#]?\\d{3,})",
+            "\\ S\\ MAIN\\ STREET\\ STMTDATE\\ 01/31/\\s*(\\d{4,})"
           ],
           "required": true
         },
@@ -78,7 +109,8 @@
           "patterns": [
             "Invoice\\s+Date[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})",
             "Date\\s+of\\s+Invoice[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})",
-            "Date[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})"
+            "Date[:\\s]*(\\d{1,2}[/\\-]\\d{1,2}[/\\-]\\d{2,4})",
+            "(\\d{1,2}/\\d{1,2}/\\d{2,4})"
           ],
           "required": true
         },
