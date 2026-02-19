@@ -322,7 +322,7 @@ class ReviewTab(tk.Frame):
                 "scored_candidates": self._scored_candidates,
                 "extracted_text": self._extracted_text,
             }
-            self.on_define_new(self._current_file)
+            self.on_define_new(self._current_file, self._extracted_text)
 
     # ------------------------------------------------------------------
     # DIAGNOSING_A — Classification gap analysis

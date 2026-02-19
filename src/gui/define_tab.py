@@ -1,9 +1,11 @@
 # src/gui/define_tab.py
-"""Define tab — guided type creation form."""
+"""Define tab — type creation form with optional document analysis panel."""
 
+import pathlib
 import tkinter as tk
 from tkinter import ttk, messagebox
 
+from src.gap_analyzer import analyze_document_for_new_type
 from src.type_creator_core import (
     next_available_code,
     validate_type_definition,
@@ -17,7 +19,12 @@ _STAGING_SLOTS = ["vendor", "customer", "date", "reference", "amount"]
 
 
 class DefineTab(tk.Frame):
-    """Scrollable form for creating a new document type."""
+    """Type creation form with optional document analysis panel.
+
+    When opened from the Review tab with a document, shows a side-by-side
+    layout: document analysis on the left, form on the right.  Suggested
+    keywords, patterns, and fields can be added to the form with a click.
+    """
 
     def __init__(self, parent, ctx, on_type_created=None, **kwargs):
         super().__init__(parent, **kwargs)
@@ -28,9 +35,18 @@ class DefineTab(tk.Frame):
 
         # Return context when linked from Review tab
         self._return_file_path = None
+        self._extracted_text = None
+        self._doc_analysis = None
 
         # Dynamic extraction field rows
         self._field_rows = []
+
+        # Suggestion checkbox vars (rebuilt when analysis is shown)
+        self._kw_check_vars = []   # [(keyword_str, BooleanVar)]
+        self._pat_check_vars = []  # [(pattern_str, BooleanVar)]
+
+        # Track whether analysis pane is showing
+        self._analysis_visible = False
 
         self._build_ui()
 
@@ -38,17 +54,25 @@ class DefineTab(tk.Frame):
     # Public API
     # ------------------------------------------------------------------
 
-    def set_return_context(self, file_path):
+    def set_return_context(self, file_path, extracted_text=None):
         """Set context for returning to Review tab after save."""
         self._return_file_path = file_path
+        self._extracted_text = extracted_text
+
         if file_path:
-            self._context_banner.config(
-                text=f"Defining type for: {file_path}",
-            )
+            name = pathlib.Path(file_path).name
+            self._context_banner.config(text=f"Defining type for: {name}")
             self._context_frame.pack(fill=tk.X, padx=10, pady=(4, 0),
-                                     before=self._form_canvas)
+                                     before=self._paned)
         else:
             self._context_frame.pack_forget()
+
+        if extracted_text:
+            self._doc_analysis = analyze_document_for_new_type(extracted_text)
+            self._populate_analysis()
+            self._show_analysis_pane()
+        else:
+            self._hide_analysis_pane()
 
     # ------------------------------------------------------------------
     # UI construction
@@ -56,9 +80,8 @@ class DefineTab(tk.Frame):
 
     def _build_ui(self):
         # Title
-        title = tk.Label(self, text="DEFINE NEW DOCUMENT TYPE",
-                         font=("Courier", 12, "bold"))
-        title.pack(pady=(10, 4))
+        tk.Label(self, text="DEFINE NEW DOCUMENT TYPE",
+                 font=("Courier", 12, "bold")).pack(pady=(10, 4))
 
         # Context banner (hidden until set_return_context)
         self._context_frame = tk.Frame(self, bg="#fff3cd", padx=8, pady=4)
@@ -69,9 +92,222 @@ class DefineTab(tk.Frame):
         self._context_banner.pack(fill=tk.X)
         # Don't pack _context_frame by default — shown only when linked
 
-        # Scrollable canvas for the form
-        self._form_canvas = tk.Canvas(self, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(self, orient="vertical",
+        # Main paned window (horizontal split)
+        self._paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
+        self._paned.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
+
+        # Left pane: document analysis (built but not added until needed)
+        self._analysis_outer = tk.Frame(self._paned)
+        self._build_analysis_pane()
+
+        # Right pane: the form (always visible)
+        self._form_outer = tk.Frame(self._paned)
+        self._build_form_pane()
+        self._paned.add(self._form_outer, weight=1)
+
+    # ------------------------------------------------------------------
+    # Analysis pane (left side)
+    # ------------------------------------------------------------------
+
+    def _build_analysis_pane(self):
+        """Build the scrollable document analysis panel."""
+        outer = self._analysis_outer
+
+        tk.Label(outer, text="Document Analysis",
+                 font=("Courier", 10, "bold")).pack(anchor="w", padx=6,
+                                                     pady=(4, 2))
+
+        canvas = tk.Canvas(outer, highlightthickness=0, width=360)
+        scrollbar = ttk.Scrollbar(outer, orient="vertical",
+                                  command=canvas.yview)
+        self._analysis_scroll = tk.Frame(canvas)
+        self._analysis_scroll.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all")),
+        )
+        canvas.create_window((0, 0), window=self._analysis_scroll, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self._analysis_canvas = canvas
+
+        # Mousewheel binding — activate when cursor enters this canvas
+        canvas.bind("<Enter>", lambda e: self._bind_mousewheel(canvas))
+
+    def _show_analysis_pane(self):
+        if not self._analysis_visible:
+            self._paned.insert(0, self._analysis_outer, weight=0)
+            self._analysis_visible = True
+
+    def _hide_analysis_pane(self):
+        if self._analysis_visible:
+            self._paned.forget(self._analysis_outer)
+            self._analysis_visible = False
+
+    def _populate_analysis(self):
+        """Fill the analysis panel with document suggestions."""
+        # Clear existing content
+        for w in self._analysis_scroll.winfo_children():
+            w.destroy()
+        self._kw_check_vars = []
+        self._pat_check_vars = []
+
+        f = self._analysis_scroll
+        analysis = self._doc_analysis
+        if not analysis:
+            return
+
+        # --- Extracted text preview ---
+        text_frame = tk.LabelFrame(f, text="Extracted Text", padx=4, pady=4)
+        text_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+        preview = tk.Text(text_frame, height=10, width=44, font=("Courier", 8),
+                          wrap=tk.WORD)
+        preview.insert("1.0", (self._extracted_text or "")[:5000])
+        preview.config(state=tk.DISABLED)
+        preview.pack(fill=tk.X)
+
+        # --- Suggested keywords ---
+        kw_list = analysis.get("suggested_keywords", [])
+        if kw_list:
+            kw_frame = tk.LabelFrame(
+                f, text=f"Suggested Keywords ({len(kw_list)})",
+                padx=4, pady=4,
+            )
+            kw_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+
+            for kw in kw_list:
+                var = tk.BooleanVar(value=False)
+                tk.Checkbutton(kw_frame, text=kw, variable=var,
+                               font=("Courier", 8), anchor="w").pack(
+                    fill=tk.X)
+                self._kw_check_vars.append((kw, var))
+
+            tk.Button(kw_frame, text="Add Selected to Keywords",
+                      command=self._add_selected_keywords,
+                      font=("Courier", 8)).pack(pady=(4, 0))
+
+        # --- Suggested patterns ---
+        pat_list = analysis.get("suggested_patterns", [])
+        if pat_list:
+            pat_frame = tk.LabelFrame(
+                f, text=f"Suggested Patterns ({len(pat_list)})",
+                padx=4, pady=4,
+            )
+            pat_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+
+            for pat in pat_list:
+                var = tk.BooleanVar(value=False)
+                tk.Checkbutton(pat_frame, text=pat, variable=var,
+                               font=("Courier", 8), anchor="w").pack(
+                    fill=tk.X)
+                self._pat_check_vars.append((pat, var))
+
+            tk.Button(pat_frame, text="Add Selected to Patterns",
+                      command=self._add_selected_patterns,
+                      font=("Courier", 8)).pack(pady=(4, 0))
+
+        # --- Detected fields (label:value pairs) ---
+        fields = analysis.get("detected_fields", [])
+        if fields:
+            fld_frame = tk.LabelFrame(
+                f, text=f"Detected Fields ({len(fields)})",
+                padx=4, pady=4,
+            )
+            fld_frame.pack(fill=tk.X, padx=6, pady=(0, 6))
+
+            for fld in fields:
+                row_f = tk.Frame(fld_frame)
+                row_f.pack(fill=tk.X, pady=1)
+
+                label_text = f"{fld['label']}: {fld['value']}"
+                if len(label_text) > 42:
+                    label_text = label_text[:39] + "..."
+                tk.Label(row_f, text=label_text,
+                         font=("Courier", 8), anchor="w").pack(
+                    side=tk.LEFT, fill=tk.X, expand=True)
+
+                tk.Label(row_f, text=f"[{fld['field_type']}]",
+                         font=("Courier", 7), fg="gray").pack(
+                    side=tk.LEFT, padx=(2, 4))
+
+                tk.Button(
+                    row_f, text="Add",
+                    font=("Courier", 7),
+                    command=lambda d=fld: self._add_detected_field(d),
+                ).pack(side=tk.RIGHT)
+
+        if not kw_list and not pat_list and not fields:
+            tk.Label(f, text="No suggestions found.",
+                     font=("Courier", 9), fg="gray").pack(pady=8)
+
+    # ------------------------------------------------------------------
+    # Analysis → Form transfer actions
+    # ------------------------------------------------------------------
+
+    def _add_selected_keywords(self):
+        """Append checked keywords to the Keywords text box."""
+        selected = [kw for kw, var in self._kw_check_vars if var.get()]
+        if not selected:
+            return
+        existing = self._keywords_text.get("1.0", "end").strip()
+        existing_set = {
+            line.strip().lower()
+            for line in existing.splitlines() if line.strip()
+        }
+        new_kws = [kw for kw in selected if kw.lower() not in existing_set]
+        if new_kws:
+            if existing:
+                self._keywords_text.insert("end", "\n")
+            self._keywords_text.insert("end", "\n".join(new_kws))
+        # Uncheck added items
+        for kw, var in self._kw_check_vars:
+            if kw in selected:
+                var.set(False)
+
+    def _add_selected_patterns(self):
+        """Append checked patterns to the Patterns text box."""
+        selected = [pat for pat, var in self._pat_check_vars if var.get()]
+        if not selected:
+            return
+        existing = self._patterns_text.get("1.0", "end").strip()
+        existing_set = {
+            line.strip() for line in existing.splitlines() if line.strip()
+        }
+        new_pats = [pat for pat in selected if pat not in existing_set]
+        if new_pats:
+            if existing:
+                self._patterns_text.insert("end", "\n")
+            self._patterns_text.insert("end", "\n".join(new_pats))
+        for pat, var in self._pat_check_vars:
+            if pat in selected:
+                var.set(False)
+
+    def _add_detected_field(self, field_data):
+        """Add a detected field as an extraction field row in the form."""
+        # Check if field name already exists
+        for row in self._field_rows:
+            if row["name"].get() == field_data["field_name"]:
+                return  # Already added
+        ref_role = ""
+        if field_data["field_type"] == "name":
+            ref_role = "vendor"  # Default; user can change
+        self._add_field_row(
+            name=field_data["field_name"],
+            patterns=field_data["suggested_pattern"],
+            required=True,
+            ref_role=ref_role,
+        )
+
+    # ------------------------------------------------------------------
+    # Form pane (right side)
+    # ------------------------------------------------------------------
+
+    def _build_form_pane(self):
+        """Build the scrollable form panel — same fields as original."""
+        outer = self._form_outer
+
+        self._form_canvas = tk.Canvas(outer, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(outer, orient="vertical",
                                   command=self._form_canvas.yview)
         self._form_frame = tk.Frame(self._form_canvas)
         self._form_frame.bind(
@@ -83,17 +319,12 @@ class DefineTab(tk.Frame):
         self._form_canvas.create_window((0, 0), window=self._form_frame,
                                         anchor="nw")
         self._form_canvas.configure(yscrollcommand=scrollbar.set)
-        self._form_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True,
-                               padx=(10, 0), pady=4)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 4), pady=4)
+        self._form_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        # Bind mousewheel scrolling
-        self._form_canvas.bind_all(
-            "<MouseWheel>",
-            lambda e: self._form_canvas.yview_scroll(
-                int(-1 * (e.delta / 120)), "units"
-            ),
-        )
+        # Mousewheel binding — activate when cursor enters this canvas
+        self._form_canvas.bind("<Enter>",
+                               lambda e: self._bind_mousewheel(self._form_canvas))
 
         f = self._form_frame
 
@@ -164,9 +395,9 @@ class DefineTab(tk.Frame):
 
         # --- Extraction Fields section ---
         row += 1
-        sep = ttk.Separator(f, orient="horizontal")
-        sep.grid(row=row, column=0, columnspan=3, sticky="ew",
-                 padx=6, pady=(12, 4))
+        ttk.Separator(f, orient="horizontal").grid(
+            row=row, column=0, columnspan=3, sticky="ew",
+            padx=6, pady=(12, 4))
 
         row += 1
         tk.Label(f, text="Extraction Fields",
@@ -179,14 +410,14 @@ class DefineTab(tk.Frame):
                                     sticky="ew", padx=6)
         self._next_field_row = row + 1
 
-        add_btn = tk.Button(f, text="+ Add Field", command=self._add_field_row)
-        add_btn.grid(row=row, column=2, sticky="e", padx=6)
+        tk.Button(f, text="+ Add Field", command=self._add_field_row).grid(
+            row=row, column=2, sticky="e", padx=6)
 
         # --- Staging Field Mapping ---
         row = self._next_field_row + 1
-        sep2 = ttk.Separator(f, orient="horizontal")
-        sep2.grid(row=row, column=0, columnspan=3, sticky="ew",
-                  padx=6, pady=(12, 4))
+        ttk.Separator(f, orient="horizontal").grid(
+            row=row, column=0, columnspan=3, sticky="ew",
+            padx=6, pady=(12, 4))
 
         row += 1
         tk.Label(f, text="Staging Field Mapping",
@@ -225,6 +456,17 @@ class DefineTab(tk.Frame):
                                sticky="w", padx=6, pady=4)
 
     # ------------------------------------------------------------------
+    # Mousewheel helper
+    # ------------------------------------------------------------------
+
+    def _bind_mousewheel(self, canvas):
+        """Bind mousewheel scrolling to the given canvas."""
+        self.bind_all(
+            "<MouseWheel>",
+            lambda e: canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"),
+        )
+
+    # ------------------------------------------------------------------
     # Extraction field rows
     # ------------------------------------------------------------------
 
@@ -237,14 +479,14 @@ class DefineTab(tk.Frame):
         name_var = tk.StringVar(value=name)
         tk.Label(row_frame, text="Field:", font=("Courier", 8)).pack(
             side=tk.LEFT, padx=(0, 2))
-        name_entry = tk.Entry(row_frame, textvariable=name_var, width=14)
-        name_entry.pack(side=tk.LEFT, padx=(0, 4))
+        tk.Entry(row_frame, textvariable=name_var, width=14).pack(
+            side=tk.LEFT, padx=(0, 4))
 
         patterns_var = tk.StringVar(value=patterns)
         tk.Label(row_frame, text="Patterns:", font=("Courier", 8)).pack(
             side=tk.LEFT, padx=(0, 2))
-        pat_entry = tk.Entry(row_frame, textvariable=patterns_var, width=20)
-        pat_entry.pack(side=tk.LEFT, padx=(0, 4))
+        tk.Entry(row_frame, textvariable=patterns_var, width=20).pack(
+            side=tk.LEFT, padx=(0, 4))
 
         req_var = tk.BooleanVar(value=required)
         tk.Checkbutton(row_frame, text="Req", variable=req_var).pack(
@@ -253,8 +495,8 @@ class DefineTab(tk.Frame):
         ref_var = tk.StringVar(value=ref_role)
         tk.Label(row_frame, text="Ref role:", font=("Courier", 8)).pack(
             side=tk.LEFT, padx=(0, 2))
-        ref_entry = tk.Entry(row_frame, textvariable=ref_var, width=10)
-        ref_entry.pack(side=tk.LEFT, padx=(0, 4))
+        tk.Entry(row_frame, textvariable=ref_var, width=10).pack(
+            side=tk.LEFT, padx=(0, 4))
 
         row_data = {
             "frame": row_frame,
@@ -434,4 +676,7 @@ class DefineTab(tk.Frame):
             var.set("")
         self._error_label.config(text="")
         self._return_file_path = None
+        self._extracted_text = None
+        self._doc_analysis = None
         self._context_frame.pack_forget()
+        self._hide_analysis_pane()

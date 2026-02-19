@@ -84,6 +84,43 @@ def analyze_classification_gap(
     }
 
 
+def analyze_document_for_new_type(extracted_text: str) -> dict:
+    """
+    Analyze document text to suggest keywords, patterns, and fields
+    for creating a new type definition.
+
+    Returns:
+        {
+            "suggested_keywords": [...],
+            "suggested_patterns": [...],
+            "detected_fields": [
+                {
+                    "label": str,
+                    "value": str,
+                    "field_name": str,
+                    "field_type": str,  # date, amount, reference, name, text
+                    "line_number": int,
+                    "suggested_pattern": str,
+                }
+            ],
+        }
+    """
+    # Keywords — reuse helper with empty existing lists
+    suggested_keywords = _suggest_keywords(extracted_text, [], {})
+
+    # Patterns — reuse helper with empty existing list
+    suggested_patterns = _suggest_patterns(extracted_text, [])
+
+    # Fields — detect label:value structures in the text
+    detected_fields = _detect_field_candidates(extracted_text)
+
+    return {
+        "suggested_keywords": suggested_keywords,
+        "suggested_patterns": suggested_patterns,
+        "detected_fields": detected_fields,
+    }
+
+
 def analyze_extraction_gap(
     extracted_text: str,
     type_name: str,
@@ -401,4 +438,74 @@ def _find_labeled_candidates(text, lines, field_name, existing_patterns):
                     "line_number": i,
                     "suggested_pattern": f"{safe_label}\\s*(.+?)\\s*$",
                 })
+    return candidates
+
+
+def _detect_field_candidates(text: str) -> list[dict]:
+    """
+    Detect label:value pairs in text that could become extraction fields.
+
+    Scans for lines like "Invoice Date: 01/31/2026" and returns structured
+    candidates with suggested field names, types, and extraction patterns.
+    """
+    candidates = []
+    seen_field_names = set()
+    lines = text.splitlines()
+
+    for i, line in enumerate(lines, 1):
+        stripped = line.strip()
+        if not stripped or ":" not in stripped:
+            continue
+
+        parts = stripped.split(":", 1)
+        label = parts[0].strip()
+        value = parts[1].strip() if len(parts) > 1 else ""
+
+        if not label or not value:
+            continue
+        if len(label) < 2 or len(label) > 50:
+            continue
+        if label.isdigit():
+            continue
+        # Skip lines that look like timestamps or URLs
+        if re.match(r"^https?$", label, re.IGNORECASE):
+            continue
+
+        # Determine likely field type from value content
+        field_type = "text"
+        if re.search(r"\d{1,2}[/-]\d{1,2}[/-]\d{2,4}", value):
+            field_type = "date"
+        elif re.search(r"\$?[\d,]+\.\d{2}", value):
+            field_type = "amount"
+        elif re.match(r"^[A-Z0-9][-A-Z0-9]{2,}$", value):
+            field_type = "reference"
+        elif re.match(r"^[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+", value):
+            field_type = "name"
+
+        # Generate field name from label
+        field_name = re.sub(r"[^a-z0-9]+", "_", label.lower()).strip("_")
+        if not field_name or field_name in seen_field_names:
+            continue
+        seen_field_names.add(field_name)
+
+        # Generate extraction pattern using raw string templates
+        safe_label = re.escape(label)
+        if field_type == "date":
+            pattern = safe_label + r"[:\s]*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})"
+        elif field_type == "amount":
+            pattern = safe_label + r"[:\s]*\$?([\d,]+\.\d{2})"
+        elif field_type == "reference":
+            pattern = safe_label + r"[:\s]*([A-Za-z0-9][\-A-Za-z0-9]+)"
+        else:
+            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+
+        candidates.append({
+            "label": label,
+            "value": value,
+            "field_name": field_name,
+            "field_type": field_type,
+            "line_number": i,
+            "suggested_pattern": pattern,
+        })
+
     return candidates

@@ -48,9 +48,9 @@ class AutoFilerGUI:
         self.notebook.add(self.review_tab, text="  Review  ")
         self.notebook.add(self.define_tab, text="  Define  ")
 
-    def _switch_to_define(self, return_file_path):
+    def _switch_to_define(self, return_file_path, extracted_text=None):
         """Called by Review tab when user clicks 'Define New Type'."""
-        self.define_tab.set_return_context(return_file_path)
+        self.define_tab.set_return_context(return_file_path, extracted_text)
         self.notebook.select(self.define_tab)
 
     def _on_type_created(self, type_name, return_file_path):

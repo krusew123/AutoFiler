@@ -26,6 +26,11 @@
       "phase": "B",
       "phase_b_reason": "missing:invoice_number",
       "resolved_at": "2026-02-19T11:37:40.417735"
+    },
+    "KRUCO - 2024 1099-INT - New Providence Capital Lending II, LP.pdf": {
+      "status": "in_review",
+      "added": "2026-02-19T12:05:35.941161",
+      "resolved_as": null
     }
   }
 }
