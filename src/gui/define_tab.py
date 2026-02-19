@@ -326,7 +326,7 @@ class DefineTab(tk.Frame):
                     ),
                 ).pack(side=tk.RIGHT)
 
-        if not kw_list and not pat_list and not fields:
+        if not kw_pool and not pat_list and not fields:
             tk.Label(f, text="No suggestions found.",
                      font=("Courier", 9), fg="gray").pack(pady=8)
 
