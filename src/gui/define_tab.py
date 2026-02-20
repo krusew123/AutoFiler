@@ -6,11 +6,10 @@ import re
 import tkinter as tk
 from tkinter import ttk, messagebox
 
-from src.gap_analyzer import analyze_document_for_new_type, find_nearby_keywords
+from src.gap_analyzer import analyze_document_for_new_type
 from src.config_learner import (
     add_entity_reference,
     add_alias_to_entity,
-    get_entity_names,
 )
 from src.type_creator_core import (
     next_available_code,
@@ -29,13 +28,12 @@ class DefineTab(tk.Frame):
 
     Left column (visible only when linked from Review with extracted text):
       - Extracted Text with scrollbar, Population button, search
-      - Keyword Population with 5-way routing dropdown
-      - Fieldname References
+      - Keyword Population with toggle buttons (kw/ext/skip)
 
     Right column (always visible):
-      - Doc_Type Fields (metadata)
-      - Keywords to Identify Doc_Type
-      - Fields to Extract
+      - doc_type (metadata)
+      - tags (classification keywords)
+      - extract (fields with req/opt toggles and name_ref checkbox)
       - Staging Field Mapping
 
     External API (unchanged):
@@ -65,9 +63,6 @@ class DefineTab(tk.Frame):
         # Population rows: [(kw, route_var, row_frame)]
         self._kw_route_rows = []
         self._kw_deleted = set()
-
-        # Fieldname reference rows: [(name, role_var, target_var, row_frame)]
-        self._ref_rows = []
 
         # Track keywords already turned into field rows (prevent dupes on re-Process)
         self._processed_extracts = set()
@@ -151,7 +146,7 @@ class DefineTab(tk.Frame):
         self._error_label.pack(anchor="w", padx=10, pady=(0, 6))
 
     # ------------------------------------------------------------------
-    # Left pane: Extracted Text + Keyword Population + Fieldname Refs
+    # Left pane: Extracted Text + Keyword Population
     # ------------------------------------------------------------------
 
     def _build_left_pane(self):
@@ -191,10 +186,6 @@ class DefineTab(tk.Frame):
         sec_b.pack(fill=tk.X, padx=6, pady=(0, 6))
         self._build_section_population(sec_b)
 
-        # Section: Fieldname References
-        sec_ref = tk.LabelFrame(f, text="Fieldname References", padx=6, pady=4)
-        sec_ref.pack(fill=tk.X, padx=6, pady=(0, 6))
-        self._build_section_ref(sec_ref)
 
     def _show_left_pane(self):
         if not self._left_visible:
@@ -237,18 +228,18 @@ class DefineTab(tk.Frame):
         f = self._right_inner
 
         # Doc_Type Fields (top of right column)
-        sec_e = tk.LabelFrame(f, text="Doc_Type Fields", padx=6, pady=4)
+        sec_e = tk.LabelFrame(f, text="doc_type", padx=6, pady=4)
         sec_e.pack(fill=tk.X, padx=6, pady=(0, 6))
         self._build_section_dtype(sec_e)
 
         # Keywords to Identify Doc_Type
-        sec_c = tk.LabelFrame(f, text="Keywords to Identify Doc_Type",
+        sec_c = tk.LabelFrame(f, text="tags",
                                padx=6, pady=4)
         sec_c.pack(fill=tk.X, padx=6, pady=(0, 6))
         self._build_section_keywords(sec_c)
 
         # Fields to Extract
-        sec_d = tk.LabelFrame(f, text="Fields to Extract", padx=6, pady=4)
+        sec_d = tk.LabelFrame(f, text="extract", padx=6, pady=4)
         sec_d.pack(fill=tk.X, padx=6, pady=(0, 6))
         self._build_section_fields(sec_d)
 
@@ -298,12 +289,18 @@ class DefineTab(tk.Frame):
         bottom = tk.Frame(parent)
         bottom.pack(fill=tk.X, pady=(4, 0))
 
-        # Pack from right: search entry, search label, population button
+        # Pack from right: ▼, ▲, search entry, search label, population button
         self._search_var = tk.StringVar()
+
+        tk.Button(bottom, text="\u25bc", font=("Courier", 8), width=2,
+                  command=self._search_next).pack(side=tk.RIGHT, padx=(2, 0))
+        tk.Button(bottom, text="\u25b2", font=("Courier", 8), width=2,
+                  command=self._search_prev).pack(side=tk.RIGHT, padx=(2, 0))
+
         search_entry = tk.Entry(bottom, textvariable=self._search_var,
                                 width=20, font=("Courier", 8))
         search_entry.pack(side=tk.RIGHT, padx=(4, 0))
-        search_entry.bind("<Return>", lambda e: self._search_text())
+        search_entry.bind("<Return>", lambda e: self._search_next())
 
         tk.Label(bottom, text="Search:", font=("Courier", 8)).pack(
             side=tk.RIGHT)
@@ -319,9 +316,19 @@ class DefineTab(tk.Frame):
     def _build_section_population(self, parent):
         tk.Label(
             parent,
-            text="Route each keyword then click Process",
+            text="Select route per keyword, then click Process",
             font=("Courier", 7), fg="gray",
         ).pack(anchor="w", pady=(0, 4))
+
+        # Column headers above radio buttons (centered over each column)
+        hdr = tk.Frame(parent)
+        hdr.pack(fill=tk.X)
+        # Spacer for delete button + keyword label
+        tk.Label(hdr, text="", width=3).pack(side=tk.LEFT, padx=(0, 2))
+        tk.Label(hdr, text="", width=22).pack(side=tk.LEFT)
+        for name in ("tags", "extract", "skip"):
+            tk.Label(hdr, text=name, font=("Courier", 7, "bold"),
+                     width=7, anchor="center").pack(side=tk.LEFT, padx=1)
 
         # Container for keyword rows
         self._kw_rows_frame = tk.Frame(parent)
@@ -349,39 +356,6 @@ class DefineTab(tk.Frame):
             font=("Courier", 7), fg="gray",
         )
         self._kw_count_label.pack(anchor="w", pady=(4, 0))
-
-    # ------------------------------------------------------------------
-    # Section: Fieldname References
-    # ------------------------------------------------------------------
-
-    def _build_section_ref(self, parent):
-        tk.Label(
-            parent,
-            text="Entity names/aliases for fieldname_ref.json (saved with type)",
-            font=("Courier", 7), fg="gray",
-        ).pack(anchor="w", pady=(0, 4))
-
-        # Container for ref rows
-        self._ref_rows_frame = tk.Frame(parent)
-        self._ref_rows_frame.pack(fill=tk.X)
-
-        # Manual add bar
-        add_frame = tk.Frame(parent)
-        add_frame.pack(fill=tk.X, pady=(6, 0))
-
-        tk.Label(add_frame, text="add:",
-                 font=("Courier", 8)).pack(side=tk.LEFT)
-        self._ref_add_var = tk.StringVar()
-        tk.Entry(add_frame, textvariable=self._ref_add_var,
-                 width=20, font=("Courier", 8)).pack(side=tk.LEFT, padx=4)
-
-        self._ref_role_add = tk.StringVar(value="vendor")
-        ttk.Combobox(add_frame, textvariable=self._ref_role_add, width=8,
-                     values=["vendor", "customer"],
-                     state="readonly").pack(side=tk.LEFT, padx=2)
-
-        tk.Button(add_frame, text="+", font=("Courier", 8),
-                  command=self._add_write_in_ref).pack(side=tk.LEFT, padx=2)
 
     # ------------------------------------------------------------------
     # Section: Doc_Type Fields (right column, top)
@@ -501,6 +475,18 @@ class DefineTab(tk.Frame):
     # ------------------------------------------------------------------
 
     def _build_section_fields(self, parent):
+        # Column headers for field rows (right-aligned over controls)
+        hdr = tk.Frame(parent)
+        hdr.pack(fill=tk.X)
+        # Right side labels matching control positions (pack right-to-left)
+        tk.Label(hdr, text="", width=4).pack(side=tk.RIGHT)          # delete spacer
+        tk.Label(hdr, text="name_ref", font=("Courier", 7, "bold")).pack(
+            side=tk.RIGHT, padx=(0, 4))
+        tk.Label(hdr, text="opt", font=("Courier", 7, "bold"),
+                 width=4).pack(side=tk.RIGHT, padx=1)
+        tk.Label(hdr, text="req", font=("Courier", 7, "bold"),
+                 width=4).pack(side=tk.RIGHT, padx=1)
+
         self._fields_container = tk.Frame(parent)
         self._fields_container.pack(fill=tk.X)
 
@@ -547,55 +533,63 @@ class DefineTab(tk.Frame):
     # Search in extracted text
     # ------------------------------------------------------------------
 
-    def _search_text(self):
-        """Find and highlight search term in extracted text, scroll to next."""
-        query = self._search_var.get().strip()
-        if not query or not self._text_preview:
-            return
-
+    def _collect_search_matches(self, query):
+        """Find all match positions for *query* and highlight them."""
         preview = self._text_preview
-
-        # Clear previous highlights
         preview.tag_remove("search_hl", "1.0", tk.END)
-
-        # Highlight all occurrences
+        positions = []
         start = "1.0"
-        first_match = None
         while True:
             pos = preview.search(query, start, tk.END, nocase=True)
             if not pos:
                 break
             end = f"{pos}+{len(query)}c"
             preview.tag_add("search_hl", pos, end)
-            if first_match is None:
-                first_match = pos
-            # Advance search position for "next" behavior
-            if preview.compare(pos, ">=", self._search_pos):
-                if first_match == pos or first_match is None:
-                    first_match = pos
-                # We want the NEXT match after current position
-                if preview.compare(pos, ">", self._search_pos):
-                    first_match = pos
-                    # Found the next one after our cursor — break to scroll here
-                    # But keep highlighting the rest
-                    next_start = end
-                    while True:
-                        p2 = preview.search(query, next_start, tk.END,
-                                            nocase=True)
-                        if not p2:
-                            break
-                        e2 = f"{p2}+{len(query)}c"
-                        preview.tag_add("search_hl", p2, e2)
-                        next_start = e2
-                    break
+            positions.append(pos)
             start = end
+        return positions
 
-        if first_match:
-            preview.see(first_match)
-            self._search_pos = f"{first_match}+1c"
-        else:
-            # Wrap around
+    def _search_next(self):
+        """Find next match after current position, wrap at end."""
+        query = self._search_var.get().strip()
+        if not query or not self._text_preview:
+            return
+        preview = self._text_preview
+        positions = self._collect_search_matches(query)
+        if not positions:
             self._search_pos = "1.0"
+            return
+        # Find first match strictly after current position
+        target = None
+        for pos in positions:
+            if preview.compare(pos, ">=", self._search_pos):
+                target = pos
+                break
+        if target is None:
+            target = positions[0]  # wrap to first
+        preview.see(target)
+        self._search_pos = f"{target}+1c"
+
+    def _search_prev(self):
+        """Find previous match before current position, wrap at beginning."""
+        query = self._search_var.get().strip()
+        if not query or not self._text_preview:
+            return
+        preview = self._text_preview
+        positions = self._collect_search_matches(query)
+        if not positions:
+            self._search_pos = "1.0"
+            return
+        # Find last match strictly before current position
+        target = None
+        for pos in reversed(positions):
+            if preview.compare(f"{pos}+1c", "<", self._search_pos):
+                target = pos
+                break
+        if target is None:
+            target = positions[-1]  # wrap to last
+        preview.see(target)
+        self._search_pos = f"{target}+1c"
 
     # ------------------------------------------------------------------
     # Populate helpers
@@ -650,7 +644,7 @@ class DefineTab(tk.Frame):
     # ------------------------------------------------------------------
 
     def _add_kw_to_population(self, kw):
-        """Add a keyword row with routing dropdown to the population."""
+        """Add a keyword row with radio buttons to the population."""
         displayed = {r[0].lower() for r in self._kw_route_rows}
         if (kw.lower() in displayed
                 or kw.lower() in {d.lower() for d in self._kw_deleted}):
@@ -659,10 +653,10 @@ class DefineTab(tk.Frame):
         row_f = tk.Frame(self._kw_rows_frame)
         row_f.pack(fill=tk.X, pady=1)
 
-        # Delete button
+        # Delete button (trashcan)
         tk.Button(
-            row_f, text="\u00d7", font=("Courier", 8, "bold"), width=2,
-            fg="red",
+            row_f, text="\U0001f5d1", font=("Segoe UI Emoji", 8),
+            width=3, fg="red",
             command=lambda r=row_f, k=kw: self._remove_kw_from_population(r, k),
         ).pack(side=tk.LEFT, padx=(0, 2))
 
@@ -670,13 +664,12 @@ class DefineTab(tk.Frame):
         tk.Label(row_f, text=kw, font=("Courier", 8, "bold"),
                  width=22, anchor="w").pack(side=tk.LEFT)
 
-        # Routing dropdown (5 choices)
+        # Radio buttons — single-select: tags / extract / skip
         route_var = tk.StringVar(value="skip")
-        ttk.Combobox(
-            row_f, textvariable=route_var, width=14,
-            values=["skip", "keyword", "extract", "close", "fieldname ref"],
-            state="readonly",
-        ).pack(side=tk.LEFT, padx=4)
+        for val in ("tags", "extract", "skip"):
+            tk.Radiobutton(row_f, text="", variable=route_var,
+                           value=val, font=("Courier", 7),
+                           width=5).pack(side=tk.LEFT, padx=1)
 
         self._kw_route_rows.append((kw, route_var, row_f))
 
@@ -703,42 +696,34 @@ class DefineTab(tk.Frame):
         self._update_kw_count()
 
     def _process_population(self):
-        """Execute routing for all non-skip keywords.
+        """Execute routing for all keywords based on radio selection.
 
-        All rows stay in the population with their choice remembered.
-        Actions are idempotent — duplicates are silently skipped.
+        - skip: remove from population
+        - tags: add to classification keywords
+        - extract: create extraction field row with keyword prepopulation
         """
-        close_keywords = []
+        to_remove = []
 
         for kw, route_var, row_f in self._kw_route_rows:
             route = route_var.get()
             if route == "skip":
+                to_remove.append((kw, row_f))
                 continue
-            elif route == "keyword":
+            if route == "tags":
                 self._add_kw_to_keywords(kw)
             elif route == "extract":
                 if kw not in self._processed_extracts:
                     _fn, pattern, _role = self._keyword_to_field(kw)
-                    self._add_field_row(name="", patterns=pattern)
+                    self._add_field_row(name=kw, patterns=pattern, keyword=kw)
                     self._processed_extracts.add(kw)
-            elif route == "close":
-                close_keywords.append(kw)
-            elif route == "fieldname ref":
-                self._add_ref_row(kw)
 
-        # Close: find nearby keywords, add to population
-        if close_keywords and self._extracted_text:
-            existing_pop = (
-                {r[0] for r in self._kw_route_rows} | self._kw_deleted
-            )
-            for kw in close_keywords:
-                nearby = find_nearby_keywords(
-                    self._extracted_text, kw,
-                    existing_population=existing_pop,
-                )
-                for nkw in nearby:
-                    self._add_kw_to_population(nkw)
-                    existing_pop.add(nkw)
+        # Remove skipped rows from population
+        for kw, row_f in to_remove:
+            self._kw_route_rows = [
+                r for r in self._kw_route_rows if r[2] is not row_f
+            ]
+            row_f.destroy()
+            self._kw_deleted.add(kw)
 
         self._update_kw_count()
         self._refresh_staging_combos()
@@ -814,11 +799,20 @@ class DefineTab(tk.Frame):
     # ------------------------------------------------------------------
 
     def _add_field_row(self, name="", patterns="", required=True,
-                       **_kwargs):
-        """Add a new extraction field row. No prepopulated field name
-        when routed from population (name="" in that case)."""
+                       keyword="", **_kwargs):
+        """Add a new extraction field row.
+
+        When *keyword* is non-empty the raw keyword text is shown as a bold
+        label to the left of the Field entry, and the field name entry is
+        prepopulated with the keyword text.
+        """
         row_frame = tk.Frame(self._fields_container)
         row_frame.pack(fill=tk.X, pady=2)
+
+        # Keyword origin label (only when routed from population)
+        if keyword:
+            tk.Label(row_frame, text=keyword, font=("Courier", 8, "bold"),
+                     fg="#4a90d9").pack(side=tk.LEFT, padx=(0, 4))
 
         name_var = tk.StringVar(value=name)
         tk.Label(row_frame, text="Field:", font=("Courier", 8)).pack(
@@ -832,24 +826,34 @@ class DefineTab(tk.Frame):
         tk.Entry(row_frame, textvariable=patterns_var, width=20).pack(
             side=tk.LEFT, padx=(0, 4))
 
-        req_var = tk.StringVar(value="req" if required else "opt")
-        tk.Radiobutton(row_frame, text="Req", variable=req_var, value="req",
-                       font=("Courier", 7)).pack(side=tk.LEFT)
-        tk.Radiobutton(row_frame, text="Opt", variable=req_var, value="opt",
-                       font=("Courier", 7)).pack(side=tk.LEFT, padx=(0, 4))
+        # Delete button (trashcan) — pack right side first
+        row_data = {}  # forward-declare so lambda can capture
+        tk.Button(
+            row_frame, text="\U0001f5d1", font=("Segoe UI Emoji", 8),
+            width=3, fg="red",
+            command=lambda: self._remove_field_row(row_data),
+        ).pack(side=tk.RIGHT, padx=2)
 
-        row_data = {
+        # name_ref checkbox
+        name_ref_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(row_frame, text="name_ref", variable=name_ref_var,
+                       font=("Courier", 7)).pack(side=tk.RIGHT, padx=(0, 4))
+
+        # req/opt radio buttons
+        req_var = tk.StringVar(value="req" if required else "opt")
+        tk.Radiobutton(row_frame, text="opt", variable=req_var, value="opt",
+                       font=("Courier", 7)).pack(side=tk.RIGHT, padx=1)
+        tk.Radiobutton(row_frame, text="req", variable=req_var, value="req",
+                       font=("Courier", 7)).pack(side=tk.RIGHT, padx=1)
+
+        row_data.update({
             "frame": row_frame,
             "name": name_var,
             "patterns": patterns_var,
             "required": req_var,
-        }
+            "name_ref": name_ref_var,
+        })
         self._field_rows.append(row_data)
-
-        tk.Button(
-            row_frame, text="-", width=2,
-            command=lambda: self._remove_field_row(row_data),
-        ).pack(side=tk.LEFT, padx=2)
 
         self._refresh_staging_combos()
         name_var.trace_add("write", lambda *_: self._refresh_staging_combos())
@@ -858,63 +862,6 @@ class DefineTab(tk.Frame):
         row_data["frame"].destroy()
         self._field_rows.remove(row_data)
         self._refresh_staging_combos()
-
-    # ------------------------------------------------------------------
-    # Fieldname reference rows (left column)
-    # ------------------------------------------------------------------
-
-    def _add_ref_row(self, name):
-        """Add a fieldname reference entry. Deduped by name."""
-        existing_names = {r[0].lower() for r in self._ref_rows}
-        if name.lower() in existing_names:
-            return
-
-        # Build entity choices
-        entity_names = get_entity_names(self.config)
-        entity_choices = ["(new entity)"] + [
-            f"{key} \u2014 {ename}"
-            for key, ename in sorted(entity_names.items())
-        ]
-
-        row_f = tk.Frame(self._ref_rows_frame)
-        row_f.pack(fill=tk.X, pady=2)
-
-        tk.Label(row_f, text=name, font=("Courier", 8, "bold"),
-                 width=18, anchor="w").pack(side=tk.LEFT)
-
-        tk.Label(row_f, text="Role:", font=("Courier", 7)).pack(
-            side=tk.LEFT, padx=(4, 0))
-        role_var = tk.StringVar(value="vendor")
-        ttk.Combobox(row_f, textvariable=role_var, width=8,
-                     values=["vendor", "customer"],
-                     state="readonly").pack(side=tk.LEFT, padx=2)
-
-        tk.Label(row_f, text="Target:", font=("Courier", 7)).pack(
-            side=tk.LEFT, padx=(4, 0))
-        target_var = tk.StringVar(value="(new entity)")
-        ttk.Combobox(row_f, textvariable=target_var, width=20,
-                     values=entity_choices,
-                     state="readonly").pack(side=tk.LEFT, padx=2)
-
-        tk.Button(
-            row_f, text="\u00d7", font=("Courier", 8, "bold"), width=2,
-            fg="red",
-            command=lambda: self._remove_ref_row(name, row_f),
-        ).pack(side=tk.LEFT, padx=2)
-
-        self._ref_rows.append((name, role_var, target_var, row_f))
-
-    def _remove_ref_row(self, name, row_frame):
-        self._ref_rows = [r for r in self._ref_rows if r[3] is not row_frame]
-        row_frame.destroy()
-
-    def _add_write_in_ref(self):
-        """Add a manually typed fieldname reference entry."""
-        name = self._ref_add_var.get().strip()
-        if not name:
-            return
-        self._add_ref_row(name)
-        self._ref_add_var.set("")
 
     # ------------------------------------------------------------------
     # Staging combo refresh
@@ -983,6 +930,8 @@ class DefineTab(tk.Frame):
                 "patterns": pats,
                 "required": row["required"].get() == "req",
             }
+            if row["name_ref"].get():
+                field_cfg["reference_lookup"] = {}
             extraction_fields[fname] = field_cfg
 
         # Build staging_fields
@@ -1050,19 +999,6 @@ class DefineTab(tk.Frame):
             messagebox.showerror("Save Error", str(e))
             return
 
-        # Persist fieldname references
-        for name, role_var, target_var, _frame in self._ref_rows:
-            try:
-                target = target_var.get()
-                role = role_var.get()
-                if target == "(new entity)":
-                    add_entity_reference(name, role, self.config)
-                else:
-                    entity_key = target.split(" \u2014 ")[0].strip()
-                    add_alias_to_entity(entity_key, name, self.config)
-            except Exception:
-                pass  # best-effort; type already saved
-
         self.af_logger.log_new_type(type_name, type_def)
         messagebox.showinfo("Saved",
                             f"Type '{type_name}' created successfully.")
@@ -1097,12 +1033,6 @@ class DefineTab(tk.Frame):
         self._processed_extracts = set()
         self._kw_write_in.set("")
         self._update_kw_count()
-
-        # Fieldname references
-        for w in self._ref_rows_frame.winfo_children():
-            w.destroy()
-        self._ref_rows = []
-        self._ref_add_var.set("")
 
         # Keywords listbox
         self._kw_listbox.delete(0, tk.END)
