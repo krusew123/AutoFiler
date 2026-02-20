@@ -23,6 +23,47 @@ def match_keywords(text: str, type_definitions: dict) -> dict:
     return matches
 
 
+def _extract_address_lines(text: str, match: re.Match) -> str:
+    """Grab continuation lines after an initial address match.
+
+    Starting from the matched line, collects subsequent lines that look like
+    address continuations (not blank, not a new label like ``Word: value``).
+    Stops after 4 continuation lines or when a stop condition is hit.
+    Returns the full address joined with ", ".
+    """
+    first_value = match.group(1).strip()
+    lines = text.splitlines()
+    match_start = match.start()
+
+    # Find which line the match is on
+    pos = 0
+    start_idx = 0
+    for i, line in enumerate(lines):
+        end = pos + len(line)
+        if pos <= match_start <= end:
+            start_idx = i
+            break
+        pos = end + 1  # +1 for the newline character
+
+    # Label pattern: "Word(s): text" — signals a new field, not continuation
+    label_re = re.compile(r"^[A-Za-z][A-Za-z ]{0,30}:\s")
+
+    parts = []
+    if first_value:
+        parts.append(first_value)
+
+    # Scan continuation lines (up to 4 after the matched line)
+    for line in lines[start_idx + 1 : start_idx + 5]:
+        stripped = line.strip()
+        if not stripped:
+            break
+        if label_re.match(stripped):
+            break
+        parts.append(stripped)
+
+    return ", ".join(parts)
+
+
 def extract_fields(text: str, type_name: str, type_definitions: dict) -> tuple[dict, list]:
     """
     Extract named fields from text using regex patterns defined in a type's
@@ -47,13 +88,17 @@ def extract_fields(text: str, type_name: str, type_definitions: dict) -> tuple[d
     for field_name, field_cfg in field_defs.items():
         patterns = field_cfg.get("patterns", [])
         required = field_cfg.get("required", False)
+        field_type = field_cfg.get("field_type", "text")
         value = None
 
         for pattern in patterns:
             try:
                 match = re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
                 if match:
-                    value = match.group(1).strip()
+                    if field_type == "address":
+                        value = _extract_address_lines(text, match)
+                    else:
+                        value = match.group(1).strip()
                     break
             except (re.error, IndexError):
                 continue

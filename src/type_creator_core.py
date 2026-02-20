@@ -6,6 +6,10 @@ import pathlib
 import re
 
 
+_VALID_FIELD_TYPES = {"text", "date", "currency", "reference", "name", "address",
+                      "phone", "email", "percentage", "url"}
+
+
 def next_available_code(existing_types: dict) -> str:
     """Find the next available 3-digit code, skipping '000' (reserved)."""
     used = set()
@@ -66,13 +70,17 @@ def validate_type_definition(
         except re.error as e:
             errors.append(f"Invalid content pattern '{pattern}': {e}")
 
-    # Extraction fields — validate pattern regexes
+    # Extraction fields — validate pattern regexes and field_type
     for field_name, field_cfg in type_def.get("extraction_fields", {}).items():
         for pattern in field_cfg.get("patterns", []):
             try:
                 re.compile(pattern)
             except re.error as e:
                 errors.append(f"Invalid extraction pattern for '{field_name}': '{pattern}' — {e}")
+        ft = field_cfg.get("field_type")
+        if ft is not None and ft not in _VALID_FIELD_TYPES:
+            errors.append(f"Invalid field_type '{ft}' for '{field_name}'. "
+                          f"Valid types: {', '.join(sorted(_VALID_FIELD_TYPES))}")
 
     # Keyword threshold
     threshold = type_def.get("keyword_threshold", 2)

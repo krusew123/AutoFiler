@@ -320,19 +320,15 @@ class DefineTab(tk.Frame):
             font=("Courier", 7), fg="gray",
         ).pack(anchor="w", pady=(0, 4))
 
-        # Column headers above radio buttons (centered over each column)
-        hdr = tk.Frame(parent)
-        hdr.pack(fill=tk.X)
-        # Spacer for delete button + keyword label
-        tk.Label(hdr, text="", width=3).pack(side=tk.LEFT, padx=(0, 2))
-        tk.Label(hdr, text="", width=22).pack(side=tk.LEFT)
-        for name in ("tags", "extract", "skip"):
-            tk.Label(hdr, text=name, font=("Courier", 7, "bold"),
-                     width=7, anchor="center").pack(side=tk.LEFT, padx=1)
-
-        # Container for keyword rows
-        self._kw_rows_frame = tk.Frame(parent)
-        self._kw_rows_frame.pack(fill=tk.X)
+        # Grid for header + keyword rows (ensures column alignment)
+        self._kw_grid = tk.Frame(parent)
+        self._kw_grid.pack(fill=tk.X)
+        self._kw_grid.columnconfigure(1, weight=1)
+        self._kw_grid.columnconfigure(2, minsize=50)
+        self._kw_grid.columnconfigure(3, minsize=60)
+        self._kw_grid.columnconfigure(4, minsize=50)
+        self._kw_next_grid_row = 1
+        self._build_kw_grid_headers()
 
         # Bottom bar: Process + write-in
         bottom = tk.Frame(parent)
@@ -356,6 +352,16 @@ class DefineTab(tk.Frame):
             font=("Courier", 7), fg="gray",
         )
         self._kw_count_label.pack(anchor="w", pady=(4, 0))
+
+    def _build_kw_grid_headers(self):
+        """Create column headers in the keyword population grid."""
+        g = self._kw_grid
+        tk.Label(g, text="tags", font=("Courier", 7, "bold")).grid(
+            row=0, column=2, padx=6)
+        tk.Label(g, text="extract", font=("Courier", 7, "bold")).grid(
+            row=0, column=3, padx=6)
+        tk.Label(g, text="skip", font=("Courier", 7, "bold")).grid(
+            row=0, column=4, padx=6)
 
     # ------------------------------------------------------------------
     # Section: Doc_Type Fields (right column, top)
@@ -475,23 +481,29 @@ class DefineTab(tk.Frame):
     # ------------------------------------------------------------------
 
     def _build_section_fields(self, parent):
-        # Column headers for field rows (right-aligned over controls)
-        hdr = tk.Frame(parent)
-        hdr.pack(fill=tk.X)
-        # Right side labels matching control positions (pack right-to-left)
-        tk.Label(hdr, text="", width=4).pack(side=tk.RIGHT)          # delete spacer
-        tk.Label(hdr, text="name_ref", font=("Courier", 7, "bold")).pack(
-            side=tk.RIGHT, padx=(0, 4))
-        tk.Label(hdr, text="opt", font=("Courier", 7, "bold"),
-                 width=4).pack(side=tk.RIGHT, padx=1)
-        tk.Label(hdr, text="req", font=("Courier", 7, "bold"),
-                 width=4).pack(side=tk.RIGHT, padx=1)
-
-        self._fields_container = tk.Frame(parent)
-        self._fields_container.pack(fill=tk.X)
+        # Grid for table-style field rows
+        self._fields_grid = tk.Frame(parent)
+        self._fields_grid.pack(fill=tk.X)
+        self._fields_grid.columnconfigure(3, weight=1)  # patterns stretches
+        self._fields_next_grid_row = 1
+        self._build_fields_grid_headers()
 
         tk.Button(parent, text="+ Add Field", font=("Courier", 8),
                   command=self._add_field_row).pack(anchor="w", pady=(6, 0))
+
+    def _build_fields_grid_headers(self):
+        """Create column headers in the extract fields grid."""
+        g = self._fields_grid
+        for col, name in enumerate(["keyword", "field name", "field type",
+                                     "patterns"]):
+            tk.Label(g, text=name, font=("Courier", 7, "bold")).grid(
+                row=0, column=col, padx=4, sticky="w")
+        tk.Label(g, text="req", font=("Courier", 7, "bold")).grid(
+            row=0, column=4, padx=2)
+        tk.Label(g, text="opt", font=("Courier", 7, "bold")).grid(
+            row=0, column=5, padx=2)
+        tk.Label(g, text="name_ref", font=("Courier", 7, "bold")).grid(
+            row=0, column=6, padx=2)
 
     # ------------------------------------------------------------------
     # Section: Staging Field Mapping (right column, bottom)
@@ -604,8 +616,10 @@ class DefineTab(tk.Frame):
 
     def _populate_population(self):
         """Fill keyword population with top 20 keywords from analysis."""
-        for w in self._kw_rows_frame.winfo_children():
+        for w in self._kw_grid.winfo_children():
             w.destroy()
+        self._build_kw_grid_headers()
+        self._kw_next_grid_row = 1
         self._kw_route_rows = []
         self._kw_deleted = set()
         self._processed_extracts = set()
@@ -644,42 +658,76 @@ class DefineTab(tk.Frame):
     # ------------------------------------------------------------------
 
     def _add_kw_to_population(self, kw):
-        """Add a keyword row with radio buttons to the population."""
-        displayed = {r[0].lower() for r in self._kw_route_rows}
+        """Add a keyword row with checkbuttons to the population grid."""
+        displayed = {r["kw"].lower() for r in self._kw_route_rows}
         if (kw.lower() in displayed
                 or kw.lower() in {d.lower() for d in self._kw_deleted}):
             return
 
-        row_f = tk.Frame(self._kw_rows_frame)
-        row_f.pack(fill=tk.X, pady=1)
+        r = self._kw_next_grid_row
+        self._kw_next_grid_row += 1
+        g = self._kw_grid
+        widgets = []
 
         # Delete button (trashcan)
-        tk.Button(
-            row_f, text="\U0001f5d1", font=("Segoe UI Emoji", 8),
+        btn = tk.Button(
+            g, text="\U0001f5d1", font=("Segoe UI Emoji", 8),
             width=3, fg="red",
-            command=lambda r=row_f, k=kw: self._remove_kw_from_population(r, k),
-        ).pack(side=tk.LEFT, padx=(0, 2))
+        )
+        btn.grid(row=r, column=0, padx=(0, 2), pady=1)
+        widgets.append(btn)
 
         # Keyword label
-        tk.Label(row_f, text=kw, font=("Courier", 8, "bold"),
-                 width=22, anchor="w").pack(side=tk.LEFT)
+        lbl = tk.Label(g, text=kw, font=("Courier", 8, "bold"), anchor="w")
+        lbl.grid(row=r, column=1, sticky="w", pady=1)
+        widgets.append(lbl)
 
-        # Radio buttons — single-select: tags / extract / skip
-        route_var = tk.StringVar(value="skip")
-        for val in ("tags", "extract", "skip"):
-            tk.Radiobutton(row_f, text="", variable=route_var,
-                           value=val, font=("Courier", 7),
-                           width=5).pack(side=tk.LEFT, padx=1)
+        # Checkbuttons — tags/extract non-exclusive, both exclusive from skip
+        tags_var = tk.BooleanVar(value=False)
+        extract_var = tk.BooleanVar(value=False)
+        skip_var = tk.BooleanVar(value=True)
 
-        self._kw_route_rows.append((kw, route_var, row_f))
+        def on_tags_toggle(tv=tags_var, sv=skip_var):
+            if tv.get():
+                sv.set(False)
 
-    def _remove_kw_from_population(self, row_frame, keyword):
+        def on_extract_toggle(ev=extract_var, sv=skip_var):
+            if ev.get():
+                sv.set(False)
+
+        def on_skip_toggle(tv=tags_var, ev=extract_var, sv=skip_var):
+            if sv.get():
+                tv.set(False)
+                ev.set(False)
+
+        cb_tags = tk.Checkbutton(g, variable=tags_var, command=on_tags_toggle)
+        cb_tags.grid(row=r, column=2, pady=1)
+        widgets.append(cb_tags)
+
+        cb_extract = tk.Checkbutton(g, variable=extract_var,
+                                    command=on_extract_toggle)
+        cb_extract.grid(row=r, column=3, pady=1)
+        widgets.append(cb_extract)
+
+        cb_skip = tk.Checkbutton(g, variable=skip_var, command=on_skip_toggle)
+        cb_skip.grid(row=r, column=4, pady=1)
+        widgets.append(cb_skip)
+
+        row_data = {
+            "kw": kw, "tags_var": tags_var, "extract_var": extract_var,
+            "skip_var": skip_var, "widgets": widgets,
+        }
+        btn.config(command=lambda rd=row_data: self._remove_kw_from_population(rd))
+        self._kw_route_rows.append(row_data)
+
+    def _remove_kw_from_population(self, row_data):
         """Delete a keyword row from population and track deletion."""
+        for w in row_data["widgets"]:
+            w.destroy()
         self._kw_route_rows = [
-            r for r in self._kw_route_rows if r[2] is not row_frame
+            r for r in self._kw_route_rows if r is not row_data
         ]
-        row_frame.destroy()
-        self._kw_deleted.add(keyword)
+        self._kw_deleted.add(row_data["kw"])
         self._update_kw_count()
 
     def _update_kw_count(self):
@@ -696,34 +744,40 @@ class DefineTab(tk.Frame):
         self._update_kw_count()
 
     def _process_population(self):
-        """Execute routing for all keywords based on radio selection.
+        """Execute routing for all keywords based on checkbox selection.
 
-        - skip: remove from population
+        - skip (or nothing selected): remove from population
         - tags: add to classification keywords
         - extract: create extraction field row with keyword prepopulation
+        Tags and extract can both be selected for the same keyword.
         """
         to_remove = []
 
-        for kw, route_var, row_f in self._kw_route_rows:
-            route = route_var.get()
-            if route == "skip":
-                to_remove.append((kw, row_f))
-                continue
-            if route == "tags":
+        for row in list(self._kw_route_rows):
+            kw = row["kw"]
+            is_tags = row["tags_var"].get()
+            is_extract = row["extract_var"].get()
+            is_skip = row["skip_var"].get() or (not is_tags and not is_extract)
+
+            if is_tags:
                 self._add_kw_to_keywords(kw)
-            elif route == "extract":
+            if is_extract:
                 if kw not in self._processed_extracts:
-                    _fn, pattern, _role = self._keyword_to_field(kw)
-                    self._add_field_row(name=kw, patterns=pattern, keyword=kw)
+                    _fn, pattern, _role, field_type = self._keyword_to_field(kw)
+                    self._add_field_row(name=kw, patterns=pattern,
+                                        keyword=kw, field_type=field_type)
                     self._processed_extracts.add(kw)
+            if is_skip and not is_tags and not is_extract:
+                to_remove.append(row)
 
         # Remove skipped rows from population
-        for kw, row_f in to_remove:
+        for row in to_remove:
+            for w in row["widgets"]:
+                w.destroy()
             self._kw_route_rows = [
-                r for r in self._kw_route_rows if r[2] is not row_f
+                r for r in self._kw_route_rows if r is not row
             ]
-            row_f.destroy()
-            self._kw_deleted.add(kw)
+            self._kw_deleted.add(row["kw"])
 
         self._update_kw_count()
         self._refresh_staging_combos()
@@ -733,42 +787,81 @@ class DefineTab(tk.Frame):
     # ------------------------------------------------------------------
 
     def _keyword_to_field(self, keyword):
-        """Convert a keyword to (field_name, pattern, ref_role)."""
+        """Convert a keyword to (field_name, pattern, ref_role, field_type)."""
         field_name = re.sub(r"[^a-z0-9]+", "_", keyword.lower()).strip("_")
-        safe_label = re.escape(keyword)
         kw_lower = keyword.lower()
 
         if "date" in kw_lower:
-            pattern = safe_label + r"[:\s]*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})"
+            field_type = "date"
             ref_role = ""
         elif any(w in kw_lower for w in (
             "amount", "total", "balance", "charge", "price", "cost", "due",
         )):
-            pattern = safe_label + r"[:\s]*\$?([\d,]+\.\d{2})"
+            field_type = "currency"
             ref_role = ""
         elif any(w in kw_lower for w in (
             "number", "num", "no", "id", "ref", "invoice", "po", "order",
         )):
-            pattern = safe_label + r"[:\s]*([A-Za-z0-9][\-A-Za-z0-9]+)"
+            field_type = "reference"
+            ref_role = ""
+        elif any(w in kw_lower for w in (
+            "address", "remit to", "mail to", "street", "location",
+        )):
+            field_type = "address"
             ref_role = ""
         elif any(w in kw_lower for w in (
             "vendor", "remit", "from", "sold by", "supplier",
         )):
-            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+            field_type = "name"
             ref_role = "vendor"
         elif any(w in kw_lower for w in (
             "customer", "client", "bill to", "prepared for", "ship to",
         )):
-            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+            field_type = "name"
             ref_role = "customer"
         elif "name" in kw_lower:
-            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+            field_type = "name"
             ref_role = "vendor"
+        elif any(w in kw_lower for w in ("phone", "fax", "tel", "mobile", "cell")):
+            field_type = "phone"
+            ref_role = ""
+        elif any(w in kw_lower for w in ("email", "e-mail")):
+            field_type = "email"
+            ref_role = ""
+        elif any(w in kw_lower for w in ("percent", "%", "rate", "ratio")):
+            field_type = "percentage"
+            ref_role = ""
+        elif any(w in kw_lower for w in ("url", "website", "link", "http")):
+            field_type = "url"
+            ref_role = ""
         else:
-            pattern = safe_label + r"[:\s]*(.+?)\s*$"
+            field_type = "text"
             ref_role = ""
 
-        return field_name, pattern, ref_role
+        pattern = self._generate_pattern(keyword, field_type)
+        return field_name, pattern, ref_role, field_type
+
+    def _generate_pattern(self, field_name, field_type):
+        """Generate a regex pattern based on field name and field type."""
+        safe_label = re.escape(field_name)
+        if field_type == "date":
+            return safe_label + r"[:\s]*(\d{1,2}[/\-]\d{1,2}[/\-]\d{2,4})"
+        elif field_type == "currency":
+            return safe_label + r"[:\s]*\$?([\d,]+\.\d{2})"
+        elif field_type == "reference":
+            return safe_label + r"[:\s]*([A-Za-z0-9][\-A-Za-z0-9]+)"
+        elif field_type == "address":
+            return safe_label + r"[:\s]*(.*?)$"
+        elif field_type == "phone":
+            return safe_label + r"[:\s]*(\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{4})"
+        elif field_type == "email":
+            return safe_label + r"[:\s]*([A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,})"
+        elif field_type == "percentage":
+            return safe_label + r"[:\s]*(\d+\.?\d*\s?%)"
+        elif field_type == "url":
+            return safe_label + r"[:\s]*(https?://\S+)"
+        else:  # text, name
+            return safe_label + r"[:\s]*(.+?)\s*$"
 
     # ------------------------------------------------------------------
     # Classification keyword management (right column)
@@ -799,67 +892,97 @@ class DefineTab(tk.Frame):
     # ------------------------------------------------------------------
 
     def _add_field_row(self, name="", patterns="", required=True,
-                       keyword="", **_kwargs):
-        """Add a new extraction field row.
+                       keyword="", field_type="text", **_kwargs):
+        """Add a new extraction field row in the grid table.
 
-        When *keyword* is non-empty the raw keyword text is shown as a bold
-        label to the left of the Field entry, and the field name entry is
-        prepopulated with the keyword text.
+        Columns: keyword | field name | field type | patterns | req | opt | name_ref | delete
         """
-        row_frame = tk.Frame(self._fields_container)
-        row_frame.pack(fill=tk.X, pady=2)
+        r = self._fields_next_grid_row
+        self._fields_next_grid_row += 1
+        g = self._fields_grid
+        widgets = []
 
-        # Keyword origin label (only when routed from population)
-        if keyword:
-            tk.Label(row_frame, text=keyword, font=("Courier", 8, "bold"),
-                     fg="#4a90d9").pack(side=tk.LEFT, padx=(0, 4))
+        # Col 0: keyword (read-only label)
+        kw_lbl = tk.Label(g, text=keyword, font=("Courier", 8, "bold"),
+                          fg="#4a90d9", anchor="w")
+        kw_lbl.grid(row=r, column=0, padx=4, sticky="w", pady=2)
+        widgets.append(kw_lbl)
 
-        name_var = tk.StringVar(value=name)
-        tk.Label(row_frame, text="Field:", font=("Courier", 8)).pack(
-            side=tk.LEFT, padx=(0, 2))
-        tk.Entry(row_frame, textvariable=name_var, width=14).pack(
-            side=tk.LEFT, padx=(0, 4))
+        # Col 1: field name (editable, prepopulated with keyword)
+        name_var = tk.StringVar(value=name if name else keyword)
+        name_entry = tk.Entry(g, textvariable=name_var, width=14,
+                              font=("Courier", 8))
+        name_entry.grid(row=r, column=1, padx=4, sticky="w", pady=2)
+        widgets.append(name_entry)
 
+        # Col 2: field type (dropdown)
+        type_var = tk.StringVar(value=field_type)
+        type_combo = ttk.Combobox(
+            g, textvariable=type_var, width=10,
+            values=["text", "date", "currency", "reference", "name",
+                    "address", "phone", "email", "percentage", "url"],
+            state="readonly",
+        )
+        type_combo.grid(row=r, column=2, padx=4, sticky="w", pady=2)
+        widgets.append(type_combo)
+
+        # Col 3: patterns (editable)
         patterns_var = tk.StringVar(value=patterns)
-        tk.Label(row_frame, text="Patterns:", font=("Courier", 8)).pack(
-            side=tk.LEFT, padx=(0, 2))
-        tk.Entry(row_frame, textvariable=patterns_var, width=20).pack(
-            side=tk.LEFT, padx=(0, 4))
+        patterns_entry = tk.Entry(g, textvariable=patterns_var, width=24,
+                                  font=("Courier", 8))
+        patterns_entry.grid(row=r, column=3, padx=4, sticky="ew", pady=2)
+        widgets.append(patterns_entry)
 
-        # Delete button (trashcan) — pack right side first
-        row_data = {}  # forward-declare so lambda can capture
-        tk.Button(
-            row_frame, text="\U0001f5d1", font=("Segoe UI Emoji", 8),
-            width=3, fg="red",
-            command=lambda: self._remove_field_row(row_data),
-        ).pack(side=tk.RIGHT, padx=2)
-
-        # name_ref checkbox
-        name_ref_var = tk.BooleanVar(value=False)
-        tk.Checkbutton(row_frame, text="name_ref", variable=name_ref_var,
-                       font=("Courier", 7)).pack(side=tk.RIGHT, padx=(0, 4))
-
-        # req/opt radio buttons
+        # Col 4: req radio
         req_var = tk.StringVar(value="req" if required else "opt")
-        tk.Radiobutton(row_frame, text="opt", variable=req_var, value="opt",
-                       font=("Courier", 7)).pack(side=tk.RIGHT, padx=1)
-        tk.Radiobutton(row_frame, text="req", variable=req_var, value="req",
-                       font=("Courier", 7)).pack(side=tk.RIGHT, padx=1)
+        req_rb = tk.Radiobutton(g, variable=req_var, value="req")
+        req_rb.grid(row=r, column=4, padx=2, pady=2)
+        widgets.append(req_rb)
 
-        row_data.update({
-            "frame": row_frame,
+        # Col 5: opt radio
+        opt_rb = tk.Radiobutton(g, variable=req_var, value="opt")
+        opt_rb.grid(row=r, column=5, padx=2, pady=2)
+        widgets.append(opt_rb)
+
+        # Col 6: name_ref checkbox
+        name_ref_var = tk.BooleanVar(value=False)
+        nref_cb = tk.Checkbutton(g, variable=name_ref_var)
+        nref_cb.grid(row=r, column=6, padx=2, pady=2)
+        widgets.append(nref_cb)
+
+        # Col 7: delete button
+        del_btn = tk.Button(g, text="\U0001f5d1", font=("Segoe UI Emoji", 8),
+                            width=3, fg="red")
+        del_btn.grid(row=r, column=7, padx=2, pady=2)
+        widgets.append(del_btn)
+
+        row_data = {
+            "widgets": widgets,
             "name": name_var,
             "patterns": patterns_var,
             "required": req_var,
             "name_ref": name_ref_var,
-        })
+            "type": type_var,
+            "keyword": keyword,
+        }
+        del_btn.config(command=lambda: self._remove_field_row(row_data))
+
+        # Regenerate patterns when field type changes
+        def regenerate_patterns(event=None):
+            fn = name_var.get().strip()
+            ft = type_var.get()
+            if fn:
+                patterns_var.set(self._generate_pattern(fn, ft))
+        type_combo.bind("<<ComboboxSelected>>", regenerate_patterns)
+
         self._field_rows.append(row_data)
 
         self._refresh_staging_combos()
         name_var.trace_add("write", lambda *_: self._refresh_staging_combos())
 
     def _remove_field_row(self, row_data):
-        row_data["frame"].destroy()
+        for w in row_data["widgets"]:
+            w.destroy()
         self._field_rows.remove(row_data)
         self._refresh_staging_combos()
 
@@ -926,9 +1049,11 @@ class DefineTab(tk.Frame):
                 p.strip()
                 for p in row["patterns"].get().split(";") if p.strip()
             ]
+            ft = row["type"].get()
             field_cfg = {
                 "patterns": pats,
                 "required": row["required"].get() == "req",
+                "field_type": ft,
             }
             if row["name_ref"].get():
                 field_cfg["reference_lookup"] = {}
@@ -1026,8 +1151,10 @@ class DefineTab(tk.Frame):
         self._search_pos = "1.0"
 
         # Keyword population
-        for w in self._kw_rows_frame.winfo_children():
+        for w in self._kw_grid.winfo_children():
             w.destroy()
+        self._build_kw_grid_headers()
+        self._kw_next_grid_row = 1
         self._kw_route_rows = []
         self._kw_deleted = set()
         self._processed_extracts = set()
@@ -1041,8 +1168,10 @@ class DefineTab(tk.Frame):
 
         # Field rows
         for row in list(self._field_rows):
-            row["frame"].destroy()
+            for w in row["widgets"]:
+                w.destroy()
         self._field_rows.clear()
+        self._fields_next_grid_row = 1
 
         # Staging
         for slot, (var, combo) in self._staging_vars.items():
