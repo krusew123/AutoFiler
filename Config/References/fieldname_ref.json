@@ -123,5 +123,27 @@
       "000"
     ],
     "date_added": "2026-02-19"
+  },
+  "kruco_llc": {
+    "name": "Kruco LLC",
+    "aliases": [],
+    "roles": [
+      "customer"
+    ],
+    "doc_types": [
+      "000"
+    ],
+    "date_added": "2026-02-19"
+  },
+  "new_providence_capital_lending_ii_lp": {
+    "name": "New Providence Capital Lending II LP",
+    "aliases": [],
+    "roles": [
+      "vendor"
+    ],
+    "doc_types": [
+      "000"
+    ],
+    "date_added": "2026-02-19"
   }
 }
